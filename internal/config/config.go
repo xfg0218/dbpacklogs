@@ -1,0 +1,158 @@
+package config
+
+import (
+	"errors"
+	"os"
+	"strings"
+)
+
+// Config 保存 CLI 解析后的所有配置参数
+type Config struct {
+	// 节点参数
+	AllHosts bool
+	Hosts    []string // --hosts 解析后的列表
+
+	// SSH 参数
+	SSHPort     int
+	SSHUser     string
+	SSHKey      string
+	SSHPassword string
+	// 跳过主机密钥校验（不安全）
+	InsecureHostKey bool
+
+	// 输出参数
+	Output   string
+	PackType string // zip | tar
+
+	// 时间范围
+	StartTime string
+	EndTime   string
+
+	// 数据库连接参数（DBHost 由 Hosts[0] 自动推导，无需手动指定）
+	DBHost     string // 内部使用，由 Validate() 自动填充
+	DBPort     int
+	DBUser     string
+	DBPassword string
+	DBName     string
+
+	// 运行参数
+	Verbose bool
+}
+
+// ParseHosts 将逗号分隔的 hosts 字符串解析为列表
+func ParseHosts(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// ParseEtcHosts 读取 /etc/hosts 文件，解析出所有IP地址
+// 过滤掉 localhost、ipv6 localhost、广播地址等
+func ParseEtcHosts() ([]string, error) {
+	data, err := os.ReadFile("/etc/hosts")
+	if err != nil {
+		return nil, err
+	}
+
+	var ips []string
+	seen := make(map[string]struct{})
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		// /etc/hosts 格式：第一列是 IP，后续列是主机名
+		ip := fields[0]
+		// 跳过 ipv6
+		if strings.Contains(ip, ":") {
+			continue
+		}
+		// 跳过非 IP 地址
+		if !IsIP(ip) {
+			continue
+		}
+		// 过滤掉 localhost、广播地址
+		if ip == "127.0.0.1" || ip == "0.0.0.0" || ip == "255.255.255.255" {
+			continue
+		}
+		// 去重
+		if _, exists := seen[ip]; exists {
+			continue
+		}
+		seen[ip] = struct{}{}
+		ips = append(ips, ip)
+	}
+	return ips, nil
+}
+
+// IsIP 判断字符串是否为有效的 IPv4 地址
+func IsIP(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 4 {
+		return false
+	}
+	for _, part := range parts {
+		// 验证每个字段是否为数字且在 0-255 范围内
+		if len(part) == 0 || len(part) > 3 {
+			return false
+		}
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+		// 转换为数字验证范围
+		n := 0
+		for _, c := range part {
+			n = n*10 + int(c-'0')
+		}
+		if n > 255 {
+			return false
+		}
+	}
+	return true
+}
+
+// Validate 校验配置合法性，并自动推导 DBHost
+func (c *Config) Validate() error {
+	if c.AllHosts && len(c.Hosts) > 0 {
+		return errors.New("--all-hosts 与 --hosts 互斥，不能同时指定")
+	}
+	if !c.AllHosts && len(c.Hosts) == 0 {
+		return errors.New("必须指定 --hosts 或 --all-hosts")
+	}
+	if c.SSHUser == "" {
+		return errors.New("必须指定 --ssh-user")
+	}
+	if c.AllHosts {
+		hosts, err := ParseEtcHosts()
+		if err != nil {
+			return errors.New("读取 /etc/hosts 失败，请检查文件权限或是否存在")
+		}
+		if len(hosts) == 0 {
+			return errors.New("/etc/hosts 中未找到有效IP")
+		}
+		c.Hosts = hosts
+	}
+	if c.DBHost == "" && len(c.Hosts) > 0 {
+		c.DBHost = c.Hosts[0]
+	}
+	if c.PackType != "zip" && c.PackType != "tar" {
+		return errors.New("--pack-type 只支持 zip 或 tar")
+	}
+	return nil
+}
