@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(go build:*)",
+      "Bash(git reset:*)",
+      "Bash(go:*)",
+      "Bash(gh:*)",
+      "Bash(claude agents:*)",
+      "Bash(chmod +x:*)"
+    ]
+  }
+}
