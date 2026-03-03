@@ -1,199 +1,168 @@
-# DBpackLogs - 数据库日志收集打包工具
+# DBpackLogs - Database Log Collection & Packaging Tool
 
-[English](./README_EN.md) | 中文
+English | [中文](./README_CN.md)
 
-## 目录
+## Table of Contents
 
-1. [项目介绍](#1-项目介绍)
-2. [功能特性](#2-功能特性)
-3. [系统要求](#3-系统要求)
-4. [支持的数据类型](#4-支持的数据类型)
-5. [安装指南](#5-安装指南)
-6. [快速开始](#6-快速开始)
-7. [命令参数详解](#7-命令参数详解)
-8. [使用示例](#8-使用示例)
-9. [输出说明](#9-输出说明)
-10. [工作原理](#10-工作原理)
-11. [架构设计](#11-架构设计)
-12. [配置示例](#12-配置示例)
-13. [故障排查](#13-故障排查)
-14. [常见问题](#14-常见问题)
-15. [开发指南](#15-开发指南)
-
----
-
-## 1. 项目介绍
-
-DBpackLogs 是一款企业级的数据库日志收集打包工具，通过 SSH 远程连接到数据库节点，自动完成以下任务：
-
-- 自动识别数据库类型（Greenplum/PostgreSQL/openGauss）
-- 自动发现集群中的所有节点
-- 按时间范围收集数据库日志
-- 收集数据库配置文件
-- 收集操作系统诊断信息
-- 生成收集报告
-- 打包输出为 ZIP 或 TAR.GZ 格式
-
-### 适用场景
-
-- 数据库故障排查和诊断
-- 数据库性能分析
-- 数据库审计和合规
-- 数据库升级迁移前的数据收集
-- 日常数据库巡检
+1. [Introduction](#1-introduction)
+2. [Features](#2-features)
+3. [Requirements](#3-requirements)
+4. [Supported Databases](#4-supported-databases)
+5. [Installation](#5-installation)
+6. [Quick Start](#6-quick-start)
+7. [CLI Reference](#7-cli-reference)
+8. [Examples](#8-examples)
+9. [Output Structure](#9-output-structure)
+10. [How It Works](#10-how-it-works)
+11. [Architecture](#11-architecture)
+12. [Configuration Examples](#12-configuration-examples)
+13. [Troubleshooting](#13-troubleshooting)
+14. [FAQ](#14-faq)
+15. [Development Guide](#15-development-guide)
 
 ---
 
-## 2. 功能特性
+## 1. Introduction
 
-### 2.1 核心功能
+DBpackLogs is an enterprise-grade database log collection and packaging tool. It connects to database nodes via SSH and automatically:
 
-| 功能 | 说明 |
-|------|------|
-| **多数据库支持** | 自动识别 Greenplum、PostgreSQL、openGauss |
-| **自动节点发现** | 自动发现集群中的所有节点（master/coordinator/primary/standby/segment） |
-| **时间范围过滤** | 按指定时间范围精确收集日志，支持多种时间格式 |
-| **配置文件收集** | 自动收集 postgresql.conf、pg_hba.conf、pg_ident.conf 等 |
-| **OS 信息收集** | 收集 CPU、内存、磁盘、网络、系统日志等 |
-| **智能打包** | 支持 ZIP 和 TAR.GZ 格式输出 |
-| **错误容忍** | 单节点失败不影响其他节点收集 |
+- Detects database type (Greenplum / PostgreSQL / openGauss)
+- Discovers all nodes in the cluster
+- Collects database logs within a specified time range
+- Collects database configuration files
+- Collects OS diagnostic information
+- Generates a collection report
+- Packages everything into ZIP or TAR.GZ format
 
-### 2.2 高级特性
+### Use Cases
 
-| 特性 | 说明 |
-|------|------|
-| **SSH 连接池** | 复用 SSH 连接，提升多节点收集效率 |
-| **指数退避重试** | 网络错误自动重试，避免瞬时故障 |
-| **并发收集** | 多节点并行收集，缩短总耗时 |
-| **信号处理** | 支持 Ctrl+C 优雅退出 |
-| **调试模式** | 详细的调试日志输出 |
+- Database failure diagnosis and troubleshooting
+- Database performance analysis
+- Audit and compliance data collection
+- Pre-migration data gathering
+- Routine database health checks
 
 ---
 
-## 3. 系统要求
+## 2. Features
 
-### 3.1 运行要求
+### 2.1 Core Features
 
-| 要求 | 说明 |
-|------|------|
-| **操作系统** | Linux (CentOS、RHEL、Ubuntu、Debian 等) |
-| **Go 版本** | Go 1.21 或更高版本 |
-| **SSH 访问** | 能够访问数据库节点的 SSH |
-| **磁盘空间** | 根据日志量预留足够空间 |
+| Feature | Description |
+|---------|-------------|
+| **Multi-database support** | Auto-detects Greenplum, PostgreSQL, openGauss |
+| **Auto node discovery** | Discovers all cluster nodes (coordinator / primary / standby / segment) |
+| **Time-range filtering** | Collects logs within a precise time window; supports multiple time formats |
+| **Config file collection** | Collects `postgresql.conf`, `pg_hba.conf`, `pg_ident.conf`, etc. |
+| **OS info collection** | Collects CPU, memory, disk, network, system logs, etc. |
+| **Flexible packaging** | Outputs ZIP or TAR.GZ archives |
+| **Fault tolerance** | A single-node failure does not interrupt collection on other nodes |
 
-### 3.2 目标节点要求
+### 2.2 Advanced Features
 
-| 组件 | 要求 |
-|------|------|
-| **SSH 服务** | 目标节点需要开启 SSH 服务 |
-| **数据库** | Greenplum 5.x+ / PostgreSQL 9.x+ / openGauss 3.x+ |
-| **磁盘空间** | 日志目录所在分区需要有足够空间 |
+| Feature | Description |
+|---------|-------------|
+| **SSH connection pool** | Reuses SSH connections to improve multi-node efficiency |
+| **Exponential backoff retry** | Automatically retries on transient network errors |
+| **Concurrent collection** | Collects from multiple nodes in parallel to reduce total time |
+| **Graceful shutdown** | Handles Ctrl+C / SIGTERM cleanly |
+| **Debug mode** | Detailed debug-level log output via `--verbose` |
 
 ---
 
-## 4. 支持的数据类型
+## 3. Requirements
+
+### 3.1 Runtime Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| **OS** | Linux (CentOS, RHEL, Ubuntu, Debian, etc.) |
+| **Go version** | Go 1.21 or higher (for building from source) |
+| **SSH access** | SSH access to all target database nodes |
+| **Disk space** | Reserve sufficient space based on expected log volume |
+
+### 3.2 Target Node Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| **SSH service** | SSH must be enabled on each target node |
+| **Database** | Greenplum 5.x+ / PostgreSQL 9.x+ / openGauss 3.x+ |
+| **Disk space** | Sufficient free space on the partition hosting log directories |
+
+---
+
+## 4. Supported Databases
 
 ### 4.1 Greenplum
 
-| 版本 | 支持状态 | 节点发现方式 |
-|------|----------|--------------|
-| 5.x | ✅ 支持 | gp_segment_configuration |
-| 6.x | ✅ 支持 | gp_segment_configuration |
-| 7.x | ✅ 支持 | gp_segment_configuration |
+| Version | Status | Node Discovery |
+|---------|--------|----------------|
+| 5.x | ✅ Supported | `gp_segment_configuration` |
+| 6.x | ✅ Supported | `gp_segment_configuration` |
+| 7.x | ✅ Supported | `gp_segment_configuration` |
 
-**节点角色**：
-- coordinator：协调节点
-- primary：主节点
-- mirror：镜像节点
-- standby：备节点
-- segment：数据分片节点
+**Node roles**: `coordinator`, `primary`, `mirror`, `standby`, `segment`
 
 ### 4.2 PostgreSQL
 
-| 版本 | 支持状态 | 节点发现方式 |
-|------|----------|--------------|
-| 9.x | ✅ 支持 | pg_stat_replication |
-| 10.x | ✅ 支持 | pg_stat_replication |
-| 11.x - 16.x | ✅ 支持 | pg_stat_replication |
+| Version | Status | Node Discovery |
+|---------|--------|----------------|
+| 9.x | ✅ Supported | `pg_stat_replication` |
+| 10.x | ✅ Supported | `pg_stat_replication` |
+| 11.x – 16.x | ✅ Supported | `pg_stat_replication` |
 
-**节点角色**：
-- primary：主节点
-- standby：备节点
+**Node roles**: `primary`, `standby`
 
-**复制方式**：
-- 流复制 (Streaming Replication)
-- 逻辑复制 (Logical Replication)
-- 物理复制 (Physical Replication)
+**Replication types**: Streaming, Logical, Physical
 
 ### 4.3 openGauss
 
-| 版本 | 支持状态 | 节点发现方式 |
-|------|----------|--------------|
-| 3.0.x | ✅ 支持 | cm_ctl / gs_om |
-| 3.1.x | ✅ 支持 | cm_ctl / gs_om |
-| 5.0.x | ✅ 支持 | cm_ctl / gs_om |
+| Version | Status | Node Discovery |
+|---------|--------|----------------|
+| 3.0.x | ✅ Supported | `cm_ctl` / `gs_om` |
+| 3.1.x | ✅ Supported | `cm_ctl` / `gs_om` |
+| 5.0.x | ✅ Supported | `cm_ctl` / `gs_om` |
 
-**节点角色**：
-- primary：主节点
-- standby：备节点
-- cascade standby：级联备节点
+**Node roles**: `primary`, `standby`, `cascade standby`
 
 ---
 
-## 5. 安装指南
+## 5. Installation
 
-### 5.1 从源码构建
+### 5.1 Build from Source
 
 ```bash
-# 克隆项目
-git clone https://github.com/your-repo/dbpacklogs.git
+git clone https://github.com/xfg0218/dbpacklogs.git
 cd dbpacklogs
 
-# 构建
 make build
 
-# 验证
 ./bin/dbpacklogs --help
 ```
 
-### 5.2 交叉编译
+### 5.2 Cross-Compilation
 
 ```bash
-# Linux AMD64
-make build-linux-amd64
-
-# Linux ARM64
-make build-linux-arm64
-
-# macOS AMD64
-make build-darwin-amd64
-
-# macOS ARM64
-make build-darwin-arm64
+make build-linux-amd64   # Linux AMD64
+make build-linux-arm64   # Linux ARM64
+make build-darwin-amd64  # macOS AMD64
+make build-darwin-arm64  # macOS ARM64
 ```
 
-### 5.3 预编译版本
+### 5.3 Pre-built Binaries
 
-从 [Releases](https://github.com/your-repo/dbpacklogs/releases) 页面下载对应平台的二进制文件。
+Download the binary for your platform from the [Releases](https://github.com/xfg0218/dbpacklogs/releases) page.
 
 ---
 
-## 6. 快速开始
-
-### 6.1 最简单的使用
+## 6. Quick Start
 
 ```bash
-# 单节点收集
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
+# Collect logs from a single node (last 3 days by default)
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
 
-# 收集最近3天的日志
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --start-time '2026-02-20' --end-time '2026-02-27'
-```
-
-### 6.2 完整示例
-
-```bash
-./dbpacklogs \
+# Collect logs within a specific time range
+./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11,10.0.0.12 \
   --ssh-user gpadmin \
   --ssh-password 'YourPassword' \
@@ -208,148 +177,163 @@ make build-darwin-arm64
 
 ---
 
-## 7. 命令参数详解
+## 7. CLI Reference
 
-### 7.1 必填参数
+### 7.1 Required Parameters
 
-| 参数 | 说明 | 示例 |
-|------|------|------|
-| `--ssh-user` | SSH 用户名 | `--ssh-user gpadmin` |
+| Flag | Description | Example |
+|------|-------------|---------|
+| `--ssh-user` | SSH username | `--ssh-user gpadmin` |
 
-### 7.2 节点参数
+### 7.2 Node Parameters
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--hosts` | - | 指定节点列表，逗号分隔 |
-| `--all-hosts` | false | 从 /etc/hosts 读取所有节点 |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--hosts` | — | Comma-separated list of node IPs |
+| `--all-hosts` | `false` | Read all IPs from `/etc/hosts` (mutually exclusive with `--hosts`) |
 
-### 7.3 SSH 参数
+### 7.3 SSH Parameters
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--ssh-port` | 22 | SSH 端口 |
-| `--ssh-password` | - | SSH 密码 |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ssh-port` | `22` | SSH port |
+| `--ssh-password` | — | SSH password |
+| `--ssh-key` | — | Path to SSH private key (optional; falls back to `~/.ssh/id_rsa`, `~/.ssh/id_ed25519`) |
+| `--insecure-hostkey` | `false` | Skip SSH host key verification (insecure; for first-time connections to unknown hosts) |
 
-### 7.4 数据库参数
+> **Note:** When connecting to a host that is not in `~/.ssh/known_hosts`, either add it first with `ssh-keyscan -H <host> >> ~/.ssh/known_hosts`, or pass `--insecure-hostkey`.
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--db-port` | 5432 | 数据库端口 |
-| `--db-user` | postgres | 数据库用户名 |
-| `--db-password` | - | 数据库密码 |
-| `--db-name` | postgres | 数据库名称 |
+### 7.4 Database Parameters
 
-### 7.5 时间参数
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--db-port` | `5432` | Database port |
+| `--db-user` | `postgres` | Database username |
+| `--db-password` | — | Database password |
+| `--db-name` | `postgres` | Database name |
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--start-time` | 最近3天 | 收集起始时间 |
-| `--end-time` | 当前时间 | 收集结束时间 |
+> The database host is automatically derived from the first entry in `--hosts`; there is no `--db-host` flag.
 
-**时间格式**：
-- `2006-01-02 15:04:05` - 标准格式
-- `2006-01-02T15:04:05` - ISO 格式
-- `2006-01-02` - 日期格式
-- `20060102` - 紧凑格式
+### 7.5 Time Parameters
 
-### 7.6 输出参数
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--start-time` | 3 days ago | Collection start time |
+| `--end-time` | now | Collection end time |
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--output` | . | 输出目录 |
-| `--pack-type` | zip | 打包类型 (zip/tar) |
-| `--verbose` | false | 启用调试日志 |
+**Supported time formats:**
+
+| Format | Example |
+|--------|---------|
+| `2006-01-02 15:04:05` | `2026-02-24 08:00:00` |
+| `2006-01-02T15:04:05` | `2026-02-24T08:00:00` |
+| `2006-01-02` | `2026-02-24` |
+| `20060102` | `20260224` |
+
+### 7.6 Output Parameters
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `.` | Output directory |
+| `--pack-type` | `zip` | Archive format: `zip` or `tar` |
+| `--verbose` | `false` | Enable debug logging |
 
 ---
 
-## 8. 使用示例
+## 8. Examples
 
-### 8.1 基础使用
+### 8.1 Basic Usage
 
 ```bash
-# 1. 查看帮助
-./dbpacklogs --help
+# View help
+./bin/dbpacklogs --help
 
-# 2. 收集单节点日志（默认最近3天）
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
+# Single node (last 3 days)
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
 
-# 3. 收集多节点日志
-./dbpacklogs --hosts 10.0.0.10,10.0.0.11,10.0.0.12 --ssh-user gpadmin
+# Multiple nodes
+./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11,10.0.0.12 --ssh-user gpadmin
 
-# 4. 使用 all-hosts 模式
-./dbpacklogs --all-hosts --ssh-user gpadmin
+# all-hosts mode (reads from /etc/hosts)
+./bin/dbpacklogs --all-hosts --ssh-user gpadmin
 
-# 5. 指定输出目录
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --output /data/backup
+# Custom output directory
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --output /data/backup
 ```
 
-### 8.2 时间范围过滤
+### 8.2 Time Range Filtering
 
 ```bash
-# 6. 指定日期范围
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --start-time '2026-02-20' --end-time '2026-02-25'
+# Date range
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+  --start-time '2026-02-20' --end-time '2026-02-25'
 
-# 7. 收集单日日志
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --start-time '2026-02-24' --end-time '2026-02-25'
+# Single day
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+  --start-time '2026-02-24' --end-time '2026-02-25'
 
-# 8. 带时分秒的时间范围
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --start-time '2026-02-24 08:00:00' --end-time '2026-02-24 18:00:00'
+# With time-of-day precision
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+  --start-time '2026-02-24 08:00:00' --end-time '2026-02-24 20:00:00'
 
-# 9. ISO 格式时间
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --start-time '2026-02-24T00:00:00' --end-time '2026-02-25T00:00:00'
+# ISO format
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+  --start-time '2026-02-24T00:00:00' --end-time '2026-02-25T00:00:00'
+
+# Compact date format
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+  --start-time '20260224' --end-time '20260225'
 ```
 
-### 8.3 认证方式
+### 8.3 Authentication
 
 ```bash
-# 10. 使用 SSH 密码
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-password 'P@ssw0rd'
+# SSH password
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-password 'P@ssw0rd'
 
-# 11. 使用默认 SSH 密钥
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
+# SSH private key
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-key ~/.ssh/id_rsa
 
-# 12. 自定义 SSH 端口
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-port 2222
+# Default key (~/.ssh/id_rsa or ~/.ssh/id_ed25519 auto-detected)
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
 
-# 13. 指定数据库密码
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --db-password 'DbP@ss'
+# Skip host key check (first-time / unknown host)
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --insecure-hostkey
+
+# Custom SSH port
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-port 2222
 ```
 
-### 8.4 打包格式
+### 8.4 Archive Format
 
 ```bash
-# 14. ZIP 格式（默认）
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type zip
+# ZIP (default)
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type zip
 
-# 15. TAR.GZ 格式
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type tar
+# TAR.GZ
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type tar
 ```
 
-### 8.5 调试模式
+### 8.5 Database-Specific
 
 ```bash
-# 16. 启用调试日志
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --verbose
+# Greenplum cluster
+./bin/dbpacklogs --all-hosts --ssh-user gpadmin \
+  --db-port 5432 --db-user gpadmin --db-name gpadmin
+
+# PostgreSQL primary/standby
+./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11 --ssh-user postgres \
+  --db-port 5432 --db-user postgres
+
+# openGauss cluster
+./bin/dbpacklogs --all-hosts --ssh-user omm \
+  --db-port 5432 --db-user gaussdb
 ```
 
-### 8.6 数据库特定
+### 8.6 Full Example
 
 ```bash
-# 17. Greenplum 集群
-./dbpacklogs --all-hosts --ssh-user gpadmin --db-port 5432 --db-user gpadmin --db-name gpadmin
-
-# 18. PostgreSQL 主从
-./dbpacklogs --hosts 10.0.0.10,10.0.0.11 --ssh-user postgres --db-port 5432 --db-user postgres
-
-# 19. openGauss 集群
-./dbpacklogs --all-hosts --ssh-user omm --db-port 5432 --db-user gaussdb
-```
-
-### 8.7 组合场景
-
-```bash
-# 20. 完整参数示例
-./dbpacklogs \
+./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11 \
   --ssh-user gpadmin \
   --ssh-password 'P@ssw0rd' \
@@ -365,55 +349,56 @@ make build-darwin-arm64
 
 ---
 
-## 9. 输出说明
+## 9. Output Structure
 
-### 9.1 输出目录结构
+### 9.1 Directory Layout
 
 ```
 /data/backup/
-└── DBpackLogs_20260227_143000/
-    ├── greenplum/                    # 按数据库类型组织
-    │   ├── 10.0.0.10/               # 按节点 IP 组织
-    │   │   ├── db_info/             # 数据库配置信息
+└── DBpackLogs_20260227_143000_012345/
+    ├── greenplum/
+    │   ├── 10.0.0.10/
+    │   │   ├── db_info/
     │   │   │   ├── postgresql.conf
     │   │   │   ├── pg_hba.conf
     │   │   │   ├── pg_ident.conf
     │   │   │   └── cluster_topology.txt
-    │   │   ├── db_logs/             # 数据库日志
-    │   │   │   └── pg_log_10.0.0.10_pg_log.tar.gz
-    │   │   └── os_info/             # 操作系统信息
+    │   │   ├── db_logs/
+    │   │   │   └── pg_log_10_0_0_10_pg_log.tar.gz
+    │   │   └── os_info/
     │   │       ├── cpu.txt
     │   │       ├── memory.txt
     │   │       ├── disk.txt
     │   │       ├── network.txt
     │   │       ├── dmesg.txt
     │   │       ├── journalctl.txt
-    │   │       └── ...
+    │   │       ├── raid.txt
+    │   │       └── os_info.txt
     │   └── 10.0.0.11/
     │       └── ...
-    ├── collection_report.txt         # 收集报告（文本）
-    └── metadata.json                 # 元数据（JSON）
+    ├── collection_report.txt
+    └── metadata.json
 ```
 
-### 9.2 收集报告示例
+### 9.2 Collection Report Sample
 
 ```
-=== DBpackLogs 收集报告 ===
-生成时间  : 2026-02-27 14:30:00
-数据库类型: greenplum
-时间范围  : 2026-02-20 00:00:00 ~ 2026-02-27 14:30:00
-总节点数  : 3
-成功节点  : 3
-失败节点  : 0
-总耗时    : 2m30s
+=== DBpackLogs Collection Report ===
+Generated At  : 2026-02-27 14:30:00
+Database Type : greenplum
+Time Range    : 2026-02-20 00:00:00 ~ 2026-02-27 14:30:00
+Total Nodes   : 3
+Success Nodes : 3
+Failed Nodes  : 0
+Total Duration: 2m30s
 
---- 成功节点 ---
-  [OK] 10.0.0.10       role=coordinator  elapsed=45.2s
-  [OK] 10.0.0.11       role=primary     elapsed=42.1s
-  [OK] 10.0.0.12       role=standby     elapsed=38.5s
+--- Success Nodes ---
+  [OK] 10.0.0.10           role=coordinator  elapsed=45.2s
+  [OK] 10.0.0.11           role=primary      elapsed=42.1s
+  [OK] 10.0.0.12           role=standby      elapsed=38.5s
 ```
 
-### 9.3 元数据 JSON 示例
+### 9.3 Metadata JSON Sample
 
 ```json
 {
@@ -438,68 +423,59 @@ make build-darwin-arm64
 
 ---
 
-## 10. 工作原理
+## 10. How It Works
 
-### 10.1 执行流程
+### 10.1 Execution Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      DBpackLogs 执行流程                         │
-└─────────────────────────────────────────────────────────────────┘
+1. Initialization
+   ├── Parse CLI flags
+   ├── Init logger
+   ├── Validate parameters
+   ├── Create work directory
+   └── Init SSH connection pool
 
-1. 初始化
-   ├── 解析命令行参数
-   ├── 初始化日志系统
-   ├── 验证参数合法性
-   ├── 创建工作目录
-   └── 初始化 SSH 连接池
+2. Database Detection
+   ├── Connect to the first node via pgx
+   ├── Execute SELECT version()
+   └── Route to the matching adapter (Greenplum / PostgreSQL / openGauss)
 
-2. 数据库探测
-   ├── 通过 SSH 连接到第一个节点
-   ├── 使用 pgx 连接数据库
-   ├── 执行 SELECT version()
-   └── 根据返回结果识别数据库类型
+3. Node Discovery
+   ├── Greenplum : gp_segment_configuration
+   ├── PostgreSQL: pg_stat_replication + current_setting('data_directory')
+   └── openGauss : cm_ctl query -Cv  →  gs_om -t status --detail  →  single-node fallback
 
-3. 节点发现
-   ├── Greenplum: gp_segment_configuration
-   ├── PostgreSQL: pg_stat_replication + pg_catalog
-   └── openGauss: cm_ctl / gs_om
+4. Concurrent Collection (errgroup + semaphore, max 10 parallel)
+   └── Per node:
+       ├── SSH connect (pool, keepalive, exponential-backoff retry)
+       ├── Resolve data_directory (once, pointer write-back)
+       ├── Download DB config files (SFTP)
+       ├── Stream DB logs as tar.gz (remote tar → SSH stdout → local file)
+       └── Collect OS info (cpu / memory / disk / network / dmesg / journalctl / raid)
 
-4. 日志收集（并发）
-   ├── 对每个节点：
-   │   ├── 获取 SSH 连接
-   │   ├── 下载数据库配置文件
-   │   ├── 收集数据库日志（按时间过滤）
-   │   └── 收集 OS 诊断信息
-   └── errgroup 并发控制
+5. Report Generation
+   ├── collection_report.txt  (human-readable)
+   └── metadata.json          (machine-readable)
 
-5. 生成报告
-   ├── 生成文本报告
-   └── 生成 JSON 元数据
-
-6. 打包输出
-   ├── 打包为 ZIP 或 TAR.GZ
-   └── 清理临时文件
+6. Packaging & Cleanup
+   ├── Pack work directory → ZIP or TAR.GZ
+   └── Remove temporary work directory
 ```
 
-### 10.2 数据库类型识别
+### 10.2 Database Type Detection
 
 ```go
-// 通过 version() 返回值识别
 switch {
-case strings.Contains(versionLower, "greenplum"):
-    // Greenplum
-case strings.Contains(versionLower, "opengauss"), 
-     strings.Contains(versionLower, "gaussdb"):
-    // openGauss
-case strings.Contains(versionLower, "postgresql"):
-    // PostgreSQL
+case strings.Contains(version, "greenplum"):  // → GreenplumAdapter
+case strings.Contains(version, "opengauss"),
+     strings.Contains(version, "gaussdb"):    // → OpenGaussAdapter
+case strings.Contains(version, "postgresql"): // → PostgresAdapter
 }
 ```
 
-### 10.3 节点发现机制
+### 10.3 Node Discovery
 
-**Greenplum**:
+**Greenplum:**
 ```sql
 SELECT address, port, role, preferred_role, datadir
 FROM gp_segment_configuration
@@ -507,114 +483,82 @@ WHERE status = 'u'
 ORDER BY content, role
 ```
 
-**PostgreSQL**:
+**PostgreSQL:**
 ```sql
--- 主节点
+-- Primary
 SELECT current_setting('data_directory')
 
--- Standby 节点
+-- Standbys
 SELECT client_addr, application_name
 FROM pg_stat_replication
 WHERE state = 'streaming'
 ```
 
-**openGauss**:
+**openGauss:**
 ```bash
-# 方式1: cm_ctl
-cm_ctl query -Cv
-
-# 方式2: gs_om
-gs_om -t status --detail
+cm_ctl query -Cv          # preferred
+gs_om -t status --detail  # fallback
 ```
 
 ---
 
-## 11. 架构设计
+## 11. Architecture
 
-### 11.1 模块架构
+### 11.1 Module Layout
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         cmd/main.go                             │
-│                      命令行入口层                                │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     collector/orchestrator                      │
-│                       编排协调层                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ DBCollector  │  │ OSCollector  │  │   Reporter   │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-          │                    │                    │
-          ▼                    ▼                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                          detector                               │
-│                         适配器层                                 │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐                │
-│  │ Greenplum  │  │  Postgres  │  │ OpenGauss  │                │
-│  └────────────┘  └────────────┘  └────────────┘                │
-└─────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                            ssh                                  │
-│                          传输层                                  │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐                │
-│  │   Client   │  │    Pool    │  │  Transfer  │                │
-│  └────────────┘  └────────────┘  └────────────┘                │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                   cmd/main.go                    │
+│               CLI entry point                    │
+└──────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────┐
+│          collector / orchestrator                │
+│  ┌─────────────┐ ┌─────────────┐ ┌───────────┐  │
+│  │DBCollector  │ │OSCollector  │ │ Reporter  │  │
+│  └─────────────┘ └─────────────┘ └───────────┘  │
+└──────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────┐
+│                   detector                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │Greenplum │  │Postgres  │  │OpenGauss │       │
+│  └──────────┘  └──────────┘  └──────────┘       │
+└──────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────┐
+│                     ssh                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │  Client  │  │   Pool   │  │ Transfer │       │
+│  └───────��──┘  └──────────┘  └──────────┘       │
+└──────────────────────────────────────────────────┘
 ```
 
-### 11.2 核心模块说明
+### 11.2 Module Responsibilities
 
-| 模块 | 职责 |
-|------|------|
-| `cmd` | 命令行入口，参数解析 |
-| `collector` | 日志收集编排 |
-| `detector` | 数据库类型识别和节点发现 |
-| `filter` | 时间范围过滤 |
-| `packager` | 打包输出 |
-| `report` | 报告生成 |
-| `ssh` | SSH 连接和文件传输 |
-| `config` | 配置管理 |
-| `utils` | 工具函数 |
-
-### 11.3 并发模型
-
-```go
-// 使用 errgroup 实现并发收集
-eg, egCtx := errgroup.WithContext(ctx)
-
-for _, node := range nodes {
-    eg.Go(func() error {
-        // 检查上下文取消
-        select {
-        case <-egCtx.Done():
-            return egCtx.Err()
-        default:
-        }
-        
-        // 收集节点日志
-        // ...
-        
-        return nil
-    })
-}
-
-eg.Wait()
-```
+| Module | Responsibility |
+|--------|---------------|
+| `cmd` | CLI entry point, flag parsing |
+| `collector` | Orchestrates the full collection pipeline |
+| `detector` | DB type detection and node discovery |
+| `filter` | Time-range filtering for logs and dmesg |
+| `packager` | ZIP / TAR.GZ packaging and directory organization |
+| `report` | Text report and JSON metadata generation |
+| `ssh` | SSH client, connection pool, SFTP transfer, remote tar stream |
+| `config` | Config struct, validation, `/etc/hosts` parsing |
+| `utils` | Logger, time parsing, byte/duration formatting |
 
 ---
 
-## 12. 配置示例
+## 12. Configuration Examples
 
-### 12.1 Greenplum 集群
+### 12.1 Greenplum Cluster
 
 ```bash
-# 收集整个 Greenplum 集群
-./dbpacklogs \
+./bin/dbpacklogs \
   --all-hosts \
   --ssh-user gpadmin \
   --ssh-password 'P@ssw0rd' \
@@ -626,11 +570,10 @@ eg.Wait()
   --output /data/gp_backup
 ```
 
-### 12.2 PostgreSQL 主从
+### 12.2 PostgreSQL Primary/Standby
 
 ```bash
-# 收集 PostgreSQL 主从集群
-./dbpacklogs \
+./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11 \
   --ssh-user postgres \
   --ssh-password 'P@ssw0rd' \
@@ -642,11 +585,10 @@ eg.Wait()
   --output /data/pg_backup
 ```
 
-### 12.3 openGauss 集群
+### 12.3 openGauss Cluster
 
 ```bash
-# 收集 openGauss 集群
-./dbpacklogs \
+./bin/dbpacklogs \
   --all-hosts \
   --ssh-user omm \
   --ssh-password 'P@ssw0rd' \
@@ -660,148 +602,134 @@ eg.Wait()
 
 ---
 
-## 13. 故障排查
+## 13. Troubleshooting
 
-### 13.1 常见错误
+### 13.1 Common Errors
 
-| 错误 | 原因 | 解决方案 |
-|------|------|----------|
-| `SSH connection refused` | SSH 服务未启动或端口错误 | 检查 SSH 服务和端口 |
-| `Authentication failed` | 用户名或密码错误 | 验证认证信息 |
-| `Database connection failed` | 数据库参数错误 | 检查 db-host、db-port、db-user |
-| `Permission denied` | 权限不足 | 检查 SSH 用户权限 |
-| `No such file or directory` | 输出目录不存在 | 使用 --output 指定存在的目录 |
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `SSH connection refused` | SSH not running or wrong port | Check SSH service and `--ssh-port` |
+| `Authentication failed` | Wrong username or credential | Verify `--ssh-user`, `--ssh-password`, or `--ssh-key` |
+| `host not in known_hosts` | First connection to this node | Use `--insecure-hostkey` or run `ssh-keyscan -H <host> >> ~/.ssh/known_hosts` |
+| `Database connection failed` | Wrong DB params | Check `--db-port`, `--db-user`, `--db-password`, `--db-name` |
+| `Permission denied` | Insufficient SSH user privileges | Verify SSH user has read access to DB data/log directories |
+| Output directory error | Path does not exist or is not writable | Specify a valid writable directory with `--output` |
 
-### 13.2 调试模式
-
-使用 `--verbose` 参数查看详细日志：
+### 13.2 Debug Mode
 
 ```bash
-./dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --verbose
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --verbose
 ```
 
-### 13.3 日志分析
-
-收集完成后查看报告：
+### 13.3 Reviewing the Report
 
 ```bash
-# 查看文本报告
-cat DBpackLogs_20260227_143000/collection_report.txt
+# Text report
+cat DBpackLogs_20260227_143000_012345/collection_report.txt
 
-# 查看 JSON 元数据
-cat DBpackLogs_20260227_143000/metadata.json | jq .
+# JSON metadata
+cat DBpackLogs_20260227_143000_012345/metadata.json | jq .
 ```
 
 ---
 
-## 14. 常见问题
+## 14. FAQ
 
-### Q1: 如何确定数据库类型？
+**Q1: How is the database type determined?**
+The tool connects to the first node and runs `SELECT version()`. The result string is matched against `"greenplum"`, `"opengauss"` / `"gaussdb"`, and `"postgresql"`.
 
-工具会自动通过数据库连接执行 `SELECT version()` 来识别数据库类型。
+**Q2: How do I collect logs from specific nodes only?**
+Use `--hosts` with a comma-separated list of IPs.
 
-### Q2: 如何收集特定节点的日志？
+**Q3: How do I limit the time range?**
+Pass `--start-time` and `--end-time`. The maximum range is 90 days; if exceeded, the start time is adjusted automatically.
 
-使用 `--hosts` 参数指定节点 IP，多个节点用逗号分隔。
+**Q4: SSH authentication fails — what should I do?**
+1. Confirm the username and password/key are correct.
+2. Check the SSH port (`--ssh-port`).
+3. Ensure `~/.ssh/` is `700` and key files are `600`.
+4. If the host is not in `known_hosts`, use `--insecure-hostkey` or run `ssh-keyscan`.
 
-### Q3: 如何只收集某个时间段的日志？
+**Q5: Collection is slow — how can I speed it up?**
+1. Use `--pack-type tar` instead of `zip`.
+2. Narrow the time range.
+3. Check network bandwidth between the tool host and the DB nodes.
 
-使用 `--start-time` 和 `--end-time` 参数指定时间范围。
+**Q6: Disk space is low — what should I do?**
+1. Free up space or use `--output` to point to a larger volume.
+2. Reduce the time range to collect fewer logs.
 
-### Q4: SSH 认证失败怎么办？
-
-1. 检查用户名和密码是否正确
-2. 检查 SSH 端口是否正确
-3. 检查 ~/.ssh/ 目录权限是否为 700
-4. 检查密钥文件权限是否为 600
-
-### Q5: 收集速度慢怎么办？
-
-1. 使用 `--pack-type tar` 替代 zip
-2. 减少时间范围
-3. 检查网络带宽
-
-### Q6: 磁盘空间不足怎么办？
-
-1. 清理旧的日志文件
-2. 减小时间范围
-3. 使用 `--output` 指定更大空间的目录
-
-### Q7: 如何处理大集群？
-
-对于大规模集群，建议：
-1. 分批收集
-2. 使用 tar 格式
-3. 调整时间范围
+**Q7: How do I handle a large cluster?**
+Collect in batches using `--hosts`, use `--pack-type tar` for better compression speed, and narrow the time window.
 
 ---
 
-## 15. 开发指南
+## 15. Development Guide
 
-### 15.1 项目结构
+### 15.1 Project Structure
 
 ```
 dbpacklogs/
 ├── cmd/
-│   └── main.go              # 命令行入口
+│   └── main.go                  # CLI entry point
 ├── internal/
-│   ├── collector/            # 日志收集器
-│   │   ├── orchestrator.go   # 编排器
-│   │   ├── db_collector.go  # 数据库收集
-│   │   └── os_collector.go  # OS信息收集
-│   ├── config/               # 配置管理
-│   ├── detector/             # 数据库探测
-│   │   ├── adapter.go       # 适配器接口
-│   │   ├── factory.go       # 工厂函数
-│   │   ├── greenplum.go     # Greenplum适配器
-│   │   ├── postgres.go      # PostgreSQL适配器
-│   │   └── opengauss.go     # openGauss适配器
-│   ├── filter/               # 时间过滤器
-│   ├── packager/            # 打包器
-│   │   ├── packager.go      # 打包接口
-│   │   ├── zip_packager.go  # ZIP打包
-│   │   ├── tar_packager.go  # TAR打包
-│   │   └── organizer.go     # 目录组织
-│   ├── report/               # 报告生成
-│   └── ssh/                  # SSH客户端
-│       ├── client.go        # SSH连接
-│       ├── pool.go         # 连接池
-│       └── transfer.go      # 文件传输
+│   ├── collector/
+│   │   ├── orchestrator.go      # Collection pipeline orchestrator
+│   │   ├── db_collector.go      # DB config & log collection
+│   │   └── os_collector.go      # OS diagnostic collection
+│   ├── config/
+│   │   └── config.go            # Config struct, validation, /etc/hosts parsing
+│   ├── detector/
+│   │   ├── adapter.go           # DBAdapter interface + NodeInfo
+│   │   ├── factory.go           # Auto-detection factory (SELECT version())
+│   │   ├── greenplum.go         # Greenplum adapter
+│   │   ├── postgres.go          # PostgreSQL adapter
+│   │   └── opengauss.go         # openGauss adapter (SSH + cm_ctl/gs_om)
+│   ├── filter/
+│   │   └── time_filter.go       # Time-range filtering, dmesg parsing
+│   ├── packager/
+│   │   ├── packager.go          # Packager interface
+│   │   ├── zip_packager.go      # ZIP implementation
+│   │   ├── tar_packager.go      # TAR.GZ implementation
+│   │   └── organizer.go         # Work-dir creation and layout
+│   ├── report/
+│   │   └── report.go            # Text report + JSON metadata
+│   └── ssh/
+│       ├── client.go            # SSH client, auth, retry
+│       ├── pool.go              # SSH connection pool
+│       └── transfer.go          # SFTP download, remote tar stream, remote find
 └── pkg/
-    └── utils/                # 工具函数
+    └── utils/
+        ├── logger.go            # Zap logger wrapper
+        └── format.go            # Time parsing, byte/duration formatting
 ```
 
-### 15.2 构建命令
+### 15.2 Build Commands
 
 ```bash
-# 构建当前平台
-make build
-
-# 运行测试
-make test
-
-# 清理构建产物
-make clean
-
-# 代码检查
-make lint
+make build           # Build for current platform → ./bin/dbpacklogs
+make build-linux-amd64
+make build-linux-arm64
+make test            # Run tests
+make lint            # Run linter
+make clean           # Remove build artifacts
 ```
 
-### 15.3 添加新数据库支持
+### 15.3 Adding a New Database
 
-1. 在 `detector/adapter.go` 中定义适配器接口
-2. 实现 `detector` 包中的适配器
-3. 在 `detector/factory.go` 中添加类型识别逻辑
-4. 在 `detector/*_adapter.go` 中实现节点发现逻辑
+1. Define the adapter in `detector/adapter.go` (implement `DBAdapter`).
+2. Create `detector/<dbname>.go` with `Detect()`, `DiscoverNodes()`, `GetLogPaths()`.
+3. Register the new type in `detector/factory.go` by matching the `version()` string.
+4. Add the `DBType` constant to `detector/adapter.go`.
 
 ---
 
-## 许可证
+## License
 
 MIT License
 
 ---
 
-## 贡献指南
+## Contributing
 
-欢迎提交 Issue 和 Pull Request！
+Issues and pull requests are welcome!
