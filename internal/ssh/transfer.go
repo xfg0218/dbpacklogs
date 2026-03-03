@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -37,6 +38,9 @@ func RemoteCompress(client *SSHClient, remotePaths []string, writer io.Writer) e
 
 	session.Stdout = writer
 
+	var stderrBuf bytes.Buffer
+	session.Stderr = &stderrBuf
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -50,6 +54,9 @@ func RemoteCompress(client *SSHClient, remotePaths []string, writer io.Writer) e
 	runErr := session.Run("tar czf - --files-from=-")
 	wg.Wait() // 确保 goroutine 退出，不论 Run 是否成功
 	if runErr != nil {
+		if stderrBuf.Len() > 0 {
+			return fmt.Errorf("远端 tar 执行失败: %w; stderr: %s", runErr, stderrBuf.String())
+		}
 		return fmt.Errorf("远端 tar 执行失败: %w", runErr)
 	}
 	return nil

@@ -248,7 +248,7 @@ func (c *DBCollector) CollectLogs(sshClient *intssh.SSHClient, node detector.Nod
 
 	logPaths := c.adapter.GetLogPaths(node)
 	if len(logPaths) == 0 {
-		log.Warnf("[%s] 无法确定日志路径（dataDir 为空）", node.Host)
+		log.Warnf("[%s] 适配器未返回有效日志路径", node.Host)
 		return nil
 	}
 
@@ -284,11 +284,14 @@ func (c *DBCollector) CollectLogs(sshClient *intssh.SSHClient, node detector.Nod
 		outFile := filepath.Join(dbLogsDir, fmt.Sprintf("pg_log_%s_%s.tar.gz", safeHostName(node.Host), logDirName))
 		f, err := os.Create(outFile)
 		if err != nil {
-			return fmt.Errorf("创建本地输出文件失败: %w", err)
+			log.Warnf("[%s] 创建本地输出文件失败: %v，跳过日志目录 %s", node.Host, err, logDir)
+			continue
 		}
 
 		if err := intssh.RemoteCompress(sshClient, files, f); err != nil {
 			_ = f.Close()
+			// 删除因传输失败而残留的空文件，避免遗留无效压缩包
+			_ = os.Remove(outFile)
 			log.Warnf("[%s] 流式传输日志失败: %v", node.Host, err)
 			continue
 		}

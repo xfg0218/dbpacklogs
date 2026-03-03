@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"dbpacklogs/internal/filter"
@@ -67,8 +68,9 @@ func (c *OSCollector) CollectAll(sshClient *intssh.SSHClient, osInfoDir string, 
 		},
 		{
 			name: "dmesg",
-			// dmesg 不支持时间参数，先获取完整输出在本地过滤
-			cmd:  "dmesg -T 2>/dev/null || dmesg 2>/dev/null",
+			// 优先使用 dmesg -T（带可解析时间戳），失败时回退到无时间戳版本
+			// hasDmesgT 标记用于在本地过滤时判断是否能按时间过滤
+			cmd:  "dmesg -T 2>/dev/null && echo '__DMESG_T_OK__' || dmesg 2>/dev/null",
 			file: "dmesg.txt",
 		},
 		{
@@ -119,7 +121,7 @@ func (c *OSCollector) CollectAll(sshClient *intssh.SSHClient, osInfoDir string, 
 }
 
 // collectCommand 在远端执行命令，将 stdout 保存到本地文件。
-// 对 dmesg 特殊处理：在本地执行时间范围过滤。
+// 对 dmesg 特殊处理：检测 -T 是否可用，在本地执行时间范围过滤。
 // 通过追加 `|| true` 保证远端命令非零退出不触发 SSH 错误。
 func (c *OSCollector) collectCommand(
 	sshClient *intssh.SSHClient,
@@ -134,9 +136,23 @@ func (c *OSCollector) collectCommand(
 		return fmt.Errorf("[%s] 执行失败: %w", taskName, err)
 	}
 
-	// dmesg 特殊处理：本地过滤时间范围
-	if taskName == "dmesg" && len(out) > 0 && tf != nil {
-		out = tf.FilterDmesg(out)
+	// dmesg 特殊处理：检测 -T 可用性，并按时间过滤
+	if taskName == "dmesg" && len(out) > 0 {
+		const marker = "__DMESG_T_OK__"
+		outStr := string(out)
+		if strings.Contains(outStr, marker) {
+			// dmesg -T 可用：去除标记行后按时间过滤
+			outStr = strings.ReplaceAll(outStr, marker+"\n", "")
+			outStr = strings.ReplaceAll(outStr, marker, "")
+			out = []byte(outStr)
+			if tf != nil {
+				out = tf.FilterDmesg(out)
+			}
+		} else {
+			// dmesg -T 不可用：无时间戳，跳过时间过滤，在文件头部写入说明
+			header := "# [警告] 此节点的 dmesg 不支持 -T 参数，日志不含可解析时间戳，时间过滤已跳过\n"
+			out = append([]byte(header), out...)
+		}
 	}
 
 	if err := os.WriteFile(localFile, out, 0644); err != nil {

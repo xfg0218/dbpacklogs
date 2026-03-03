@@ -157,17 +157,23 @@ Download the binary for your platform from the [Releases](https://github.com/xfg
 
 ## 6. Quick Start
 
-```bash
-# Collect logs from a single node (last 3 days by default)
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
+> **Typical deployment**: DBpackLogs runs **on the master/coordinator node** of the cluster, where passwordless SSH to all data nodes is already configured and the database is accessible via peer authentication. In this setup no credentials are required at all.
 
-# Collect logs within a specific time range
+```bash
+# Minimal — run on the master node (uses current OS user, peer DB auth)
+./bin/dbpacklogs --hosts 10.0.0.10
+
+# All nodes in /etc/hosts (recommended for Greenplum / openGauss)
+./bin/dbpacklogs --all-hosts
+
+# With explicit time range
+./bin/dbpacklogs --all-hosts --start-time '2026-02-20' --end-time '2026-02-27'
+
+# Override SSH/DB user when running from a different account
 ./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11,10.0.0.12 \
   --ssh-user gpadmin \
-  --ssh-password 'YourPassword' \
   --db-user gpadmin \
-  --db-password 'DbPassword' \
   --start-time '2026-02-20' \
   --end-time '2026-02-27' \
   --pack-type tar \
@@ -179,42 +185,38 @@ Download the binary for your platform from the [Releases](https://github.com/xfg
 
 ## 7. CLI Reference
 
-### 7.1 Required Parameters
-
-| Flag | Description | Example |
-|------|-------------|---------|
-| `--ssh-user` | SSH username | `--ssh-user gpadmin` |
-
-### 7.2 Node Parameters
+### 7.1 Node Parameters
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--hosts` | — | Comma-separated list of node IPs |
 | `--all-hosts` | `false` | Read all IPs from `/etc/hosts` (mutually exclusive with `--hosts`) |
 
-### 7.3 SSH Parameters
+### 7.2 SSH Parameters
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--ssh-user` | current OS user | SSH username |
 | `--ssh-port` | `22` | SSH port |
-| `--ssh-password` | — | SSH password |
+| `--ssh-password` | — | SSH password (not needed when passwordless SSH is configured) |
 | `--ssh-key` | — | Path to SSH private key (optional; falls back to `~/.ssh/id_rsa`, `~/.ssh/id_ed25519`) |
 | `--insecure-hostkey` | `false` | Skip SSH host key verification (insecure; for first-time connections to unknown hosts) |
 
 > **Note:** When connecting to a host that is not in `~/.ssh/known_hosts`, either add it first with `ssh-keyscan -H <host> >> ~/.ssh/known_hosts`, or pass `--insecure-hostkey`.
 
-### 7.4 Database Parameters
+### 7.3 Database Parameters
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--db-port` | `5432` | Database port |
-| `--db-user` | `postgres` | Database username |
-| `--db-password` | — | Database password |
+| `--db-user` | same as `--ssh-user` | Database username |
+| `--db-password` | — | Database password (not needed with peer/trust authentication) |
 | `--db-name` | `postgres` | Database name |
 
 > The database host is automatically derived from the first entry in `--hosts`; there is no `--db-host` flag.
+> When running on the master node, the OS user typically has peer access to the database and no password is required.
 
-### 7.5 Time Parameters
+### 7.4 Time Parameters
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -230,7 +232,7 @@ Download the binary for your platform from the [Releases](https://github.com/xfg
 | `2006-01-02` | `2026-02-24` |
 | `20060102` | `20260224` |
 
-### 7.6 Output Parameters
+### 7.5 Output Parameters
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -248,84 +250,80 @@ Download the binary for your platform from the [Releases](https://github.com/xfg
 # View help
 ./bin/dbpacklogs --help
 
-# Single node (last 3 days)
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
+# Single node — run on master, no credentials needed (peer auth + passwordless SSH)
+./bin/dbpacklogs --hosts 10.0.0.10
 
 # Multiple nodes
-./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11,10.0.0.12 --ssh-user gpadmin
+./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11,10.0.0.12
 
 # all-hosts mode (reads from /etc/hosts)
-./bin/dbpacklogs --all-hosts --ssh-user gpadmin
+./bin/dbpacklogs --all-hosts
 
 # Custom output directory
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --output /data/backup
+./bin/dbpacklogs --hosts 10.0.0.10 --output /data/backup
 ```
 
 ### 8.2 Time Range Filtering
 
 ```bash
 # Date range
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-20' --end-time '2026-02-25'
 
 # Single day
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-24' --end-time '2026-02-25'
 
 # With time-of-day precision
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-24 08:00:00' --end-time '2026-02-24 20:00:00'
 
 # ISO format
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-24T00:00:00' --end-time '2026-02-25T00:00:00'
 
 # Compact date format
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '20260224' --end-time '20260225'
 ```
 
 ### 8.3 Authentication
 
 ```bash
-# SSH password
+# SSH password (when passwordless SSH is not configured)
 ./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-password 'P@ssw0rd'
 
 # SSH private key
 ./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-key ~/.ssh/id_rsa
 
-# Default key (~/.ssh/id_rsa or ~/.ssh/id_ed25519 auto-detected)
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
-
 # Skip host key check (first-time / unknown host)
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --insecure-hostkey
+./bin/dbpacklogs --hosts 10.0.0.10 --insecure-hostkey
 
 # Custom SSH port
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-port 2222
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-port 2222
 ```
 
 ### 8.4 Archive Format
 
 ```bash
 # ZIP (default)
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type zip
+./bin/dbpacklogs --hosts 10.0.0.10 --pack-type zip
 
 # TAR.GZ
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type tar
+./bin/dbpacklogs --hosts 10.0.0.10 --pack-type tar
 ```
 
 ### 8.5 Database-Specific
 
 ```bash
-# Greenplum cluster
-./bin/dbpacklogs --all-hosts --ssh-user gpadmin \
-  --db-port 5432 --db-user gpadmin --db-name gpadmin
+# Greenplum cluster — run on coordinator, no credentials needed
+./bin/dbpacklogs --all-hosts --db-port 5432 --db-name gpadmin
 
-# PostgreSQL primary/standby
-./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11 --ssh-user postgres \
-  --db-port 5432 --db-user postgres
+# PostgreSQL primary/standby — override user if needed
+./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11 \
+  --ssh-user postgres --db-port 5432
 
-# openGauss cluster
+# openGauss cluster — override user if needed
 ./bin/dbpacklogs --all-hosts --ssh-user omm \
   --db-port 5432 --db-user gaussdb
 ```
@@ -336,10 +334,7 @@ Download the binary for your platform from the [Releases](https://github.com/xfg
 ./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11 \
   --ssh-user gpadmin \
-  --ssh-password 'P@ssw0rd' \
   --db-port 5432 \
-  --db-user gpadmin \
-  --db-password 'DbP@ss' \
   --start-time '2026-02-20' \
   --end-time '2026-02-27' \
   --pack-type tar \
@@ -555,9 +550,18 @@ gs_om -t status --detail  # fallback
 
 ## 12. Configuration Examples
 
-### 12.1 Greenplum Cluster
+### 12.1 Greenplum Cluster (run on coordinator)
 
 ```bash
+# Minimal — no credentials needed (passwordless SSH + peer auth)
+./bin/dbpacklogs \
+  --all-hosts \
+  --start-time '2026-02-20' \
+  --end-time '2026-02-27' \
+  --pack-type tar \
+  --output /data/gp_backup
+
+# With explicit credentials
 ./bin/dbpacklogs \
   --all-hosts \
   --ssh-user gpadmin \
@@ -576,9 +580,6 @@ gs_om -t status --detail  # fallback
 ./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11 \
   --ssh-user postgres \
-  --ssh-password 'P@ssw0rd' \
-  --db-user postgres \
-  --db-password 'postgres123' \
   --start-time '2026-02-24' \
   --end-time '2026-02-25' \
   --pack-type zip \
@@ -591,9 +592,7 @@ gs_om -t status --detail  # fallback
 ./bin/dbpacklogs \
   --all-hosts \
   --ssh-user omm \
-  --ssh-password 'P@ssw0rd' \
   --db-user gaussdb \
-  --db-password 'gaussdb123' \
   --start-time '2026-02-20' \
   --end-time '2026-02-27' \
   --pack-type tar \
@@ -618,7 +617,7 @@ gs_om -t status --detail  # fallback
 ### 13.2 Debug Mode
 
 ```bash
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --verbose
+./bin/dbpacklogs --hosts 10.0.0.10 --verbose
 ```
 
 ### 13.3 Reviewing the Report

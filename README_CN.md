@@ -157,17 +157,23 @@ make build-darwin-arm64  # macOS ARM64
 
 ## 6. 快速开始
 
-```bash
-# 单节点收集（默认最近 3 天）
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
+> **典型部署场景**：DBpackLogs 在集群的 **master/coordinator 节点**上运行，该节点通常已对所有数据节点配置了免密 SSH，同时数据库支持 peer 认证，因此无需任何凭据即可直接运行。
 
-# 完整参数示例
+```bash
+# 最简用法——在 master 节点运行（使用当前 OS 用户，peer 认证连接数据库）
+./bin/dbpacklogs --hosts 10.0.0.10
+
+# 自动读取 /etc/hosts 中的所有节点（推荐用于 Greenplum / openGauss）
+./bin/dbpacklogs --all-hosts
+
+# 指定时间范围
+./bin/dbpacklogs --all-hosts --start-time '2026-02-20' --end-time '2026-02-27'
+
+# 非当前用户运行时手动指定 SSH/DB 用户
 ./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11,10.0.0.12 \
   --ssh-user gpadmin \
-  --ssh-password 'YourPassword' \
   --db-user gpadmin \
-  --db-password 'DbPassword' \
   --start-time '2026-02-20' \
   --end-time '2026-02-27' \
   --pack-type tar \
@@ -179,42 +185,38 @@ make build-darwin-arm64  # macOS ARM64
 
 ## 7. 命令参数详解
 
-### 7.1 必填参数
-
-| 参数 | 说明 | 示例 |
-|------|------|------|
-| `--ssh-user` | SSH 用户名 | `--ssh-user gpadmin` |
-
-### 7.2 节点参数
+### 7.1 节点参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--hosts` | — | 指定节点列表，逗号分隔 |
 | `--all-hosts` | `false` | 从 `/etc/hosts` 读取所有节点（与 `--hosts` 互斥） |
 
-### 7.3 SSH 参数
+### 7.2 SSH 参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
+| `--ssh-user` | 当前 OS 用户 | SSH 用户名 |
 | `--ssh-port` | `22` | SSH 端口 |
-| `--ssh-password` | — | SSH 密码 |
+| `--ssh-password` | — | SSH 密码（免密 SSH 时无需指定） |
 | `--ssh-key` | — | SSH 私钥路径（可选；未指定时自动尝试 `~/.ssh/id_rsa`、`~/.ssh/id_ed25519`） |
 | `--insecure-hostkey` | `false` | 跳过 SSH 主机密钥校验（首次连接未知主机时使用） |
 
 > **提示：** 首次连接新节点时，若该主机不在 `~/.ssh/known_hosts` 中，可先执行 `ssh-keyscan -H <host> >> ~/.ssh/known_hosts`，或使用 `--insecure-hostkey` 跳过校验。
 
-### 7.4 数据库参数
+### 7.3 数据库参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--db-port` | `5432` | 数据库端口 |
-| `--db-user` | `postgres` | 数据库用户名 |
-| `--db-password` | — | 数据库密码 |
+| `--db-user` | 与 `--ssh-user` 一致 | 数据库用户名 |
+| `--db-password` | — | 数据库密码（peer/trust 认证时无需指定） |
 | `--db-name` | `postgres` | 数据库名称 |
 
 > 数据库连接地址由 `--hosts` 的第一个节点自动推导，无需指定 `--db-host`。
+> 在 master 节点上运行时，OS 用户通常已通过 peer 认证直连数据库，无需密码。
 
-### 7.5 时间参数
+### 7.4 时间参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -230,7 +232,7 @@ make build-darwin-arm64  # macOS ARM64
 | `2006-01-02` | `2026-02-24` |
 | `20060102` | `20260224` |
 
-### 7.6 输出参数
+### 7.5 输出参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -248,84 +250,80 @@ make build-darwin-arm64  # macOS ARM64
 # 查看帮助
 ./bin/dbpacklogs --help
 
-# 单节点收集（默认最近 3 天）
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
+# 单节点收集（在 master 节点运行，无需凭据）
+./bin/dbpacklogs --hosts 10.0.0.10
 
 # 多节点收集
-./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11,10.0.0.12 --ssh-user gpadmin
+./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11,10.0.0.12
 
 # all-hosts 模式（从 /etc/hosts 读取）
-./bin/dbpacklogs --all-hosts --ssh-user gpadmin
+./bin/dbpacklogs --all-hosts
 
 # 指定输出目录
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --output /data/backup
+./bin/dbpacklogs --hosts 10.0.0.10 --output /data/backup
 ```
 
 ### 8.2 时间范围过滤
 
 ```bash
 # 日期范围
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-20' --end-time '2026-02-25'
 
 # 单日日志
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-24' --end-time '2026-02-25'
 
 # 带时分秒
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-24 08:00:00' --end-time '2026-02-24 20:00:00'
 
 # ISO 格式
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '2026-02-24T00:00:00' --end-time '2026-02-25T00:00:00'
 
 # 紧凑日期格式
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin \
+./bin/dbpacklogs --hosts 10.0.0.10 \
   --start-time '20260224' --end-time '20260225'
 ```
 
 ### 8.3 认证方式
 
 ```bash
-# SSH 密码
+# SSH 密码（未配置免密 SSH 时使用）
 ./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-password 'P@ssw0rd'
 
 # SSH 私钥
 ./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-key ~/.ssh/id_rsa
 
-# 使用默认密钥（自动检测 ~/.ssh/id_rsa 或 ~/.ssh/id_ed25519）
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin
-
 # 跳过主机密钥校验（首次连接未知主机）
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --insecure-hostkey
+./bin/dbpacklogs --hosts 10.0.0.10 --insecure-hostkey
 
 # 自定义 SSH 端口
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --ssh-port 2222
+./bin/dbpacklogs --hosts 10.0.0.10 --ssh-port 2222
 ```
 
 ### 8.4 打包格式
 
 ```bash
 # ZIP（默认）
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type zip
+./bin/dbpacklogs --hosts 10.0.0.10 --pack-type zip
 
 # TAR.GZ
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --pack-type tar
+./bin/dbpacklogs --hosts 10.0.0.10 --pack-type tar
 ```
 
 ### 8.5 数据库特定场景
 
 ```bash
-# Greenplum 集群
-./bin/dbpacklogs --all-hosts --ssh-user gpadmin \
-  --db-port 5432 --db-user gpadmin --db-name gpadmin
+# Greenplum 集群——在 coordinator 节点运行，无需凭据
+./bin/dbpacklogs --all-hosts --db-port 5432 --db-name gpadmin
 
-# PostgreSQL 主从
-./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11 --ssh-user postgres \
-  --db-port 5432 --db-user postgres
+# PostgreSQL 主从——需要时覆盖用户名
+./bin/dbpacklogs --hosts 10.0.0.10,10.0.0.11 \
+  --ssh-user postgres --db-port 5432
 
-# openGauss 集群
+# openGauss 集群——指定运维用户
 ./bin/dbpacklogs --all-hosts --ssh-user omm \
   --db-port 5432 --db-user gaussdb
 ```
@@ -336,10 +334,7 @@ make build-darwin-arm64  # macOS ARM64
 ./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11 \
   --ssh-user gpadmin \
-  --ssh-password 'P@ssw0rd' \
   --db-port 5432 \
-  --db-user gpadmin \
-  --db-password 'DbP@ss' \
   --start-time '2026-02-20' \
   --end-time '2026-02-27' \
   --pack-type tar \
@@ -555,9 +550,18 @@ gs_om -t status --detail   # 回退
 
 ## 12. 配置示例
 
-### 12.1 Greenplum 集群
+### 12.1 Greenplum 集群（在 coordinator 节点运行）
 
 ```bash
+# 最简用法——免密 SSH + peer 认证，无需任何凭据
+./bin/dbpacklogs \
+  --all-hosts \
+  --start-time '2026-02-20' \
+  --end-time '2026-02-27' \
+  --pack-type tar \
+  --output /data/gp_backup
+
+# 显式指定凭据
 ./bin/dbpacklogs \
   --all-hosts \
   --ssh-user gpadmin \
@@ -576,9 +580,6 @@ gs_om -t status --detail   # 回退
 ./bin/dbpacklogs \
   --hosts 10.0.0.10,10.0.0.11 \
   --ssh-user postgres \
-  --ssh-password 'P@ssw0rd' \
-  --db-user postgres \
-  --db-password 'postgres123' \
   --start-time '2026-02-24' \
   --end-time '2026-02-25' \
   --pack-type zip \
@@ -591,9 +592,7 @@ gs_om -t status --detail   # 回退
 ./bin/dbpacklogs \
   --all-hosts \
   --ssh-user omm \
-  --ssh-password 'P@ssw0rd' \
   --db-user gaussdb \
-  --db-password 'gaussdb123' \
   --start-time '2026-02-20' \
   --end-time '2026-02-27' \
   --pack-type tar \
@@ -618,7 +617,7 @@ gs_om -t status --detail   # 回退
 ### 13.2 调试模式
 
 ```bash
-./bin/dbpacklogs --hosts 10.0.0.10 --ssh-user gpadmin --verbose
+./bin/dbpacklogs --hosts 10.0.0.10 --verbose
 ```
 
 ### 13.3 日志分析

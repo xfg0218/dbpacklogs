@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"os/user"
 	"strings"
 )
 
@@ -127,7 +128,7 @@ func IsIP(s string) bool {
 	return true
 }
 
-// Validate 校验配置合法性，并自动推导 DBHost
+// Validate 校验配置合法性，并自动推导 DBHost / SSHUser / DBUser
 func (c *Config) Validate() error {
 	if c.AllHosts && len(c.Hosts) > 0 {
 		return errors.New("--all-hosts 与 --hosts 互斥，不能同时指定")
@@ -135,8 +136,17 @@ func (c *Config) Validate() error {
 	if !c.AllHosts && len(c.Hosts) == 0 {
 		return errors.New("必须指定 --hosts 或 --all-hosts")
 	}
+	// SSHUser 默认为当前操作系统用户
 	if c.SSHUser == "" {
-		return errors.New("必须指定 --ssh-user")
+		u, err := user.Current()
+		if err != nil {
+			return errors.New("获取当前系统用户失败，请通过 --ssh-user 手动指定")
+		}
+		c.SSHUser = u.Username
+	}
+	// DBUser 默认与 SSHUser 保持一致（master 节点通常使用 peer 认证）
+	if c.DBUser == "" {
+		c.DBUser = c.SSHUser
 	}
 	if c.AllHosts {
 		hosts, err := ParseEtcHosts()

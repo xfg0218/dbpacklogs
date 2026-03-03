@@ -50,8 +50,14 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		return fmt.Errorf("创建工作目录失败: %w", err)
 	}
 	log.Infof("工作目录: %s", workDir)
-	// 程序退出时清理临时工作目录
+	// packSuccess 标记打包是否成功，仅打包成功后才清理临时目录
+	// 若打包失败，保留临时目录，便于用户手动检索已收集的数据
+	packSuccess := false
 	defer func() {
+		if !packSuccess {
+			log.Warnf("打包未完成，临时工作目录已保留: %s", workDir)
+			return
+		}
 		if err := os.RemoveAll(workDir); err != nil {
 			log.Warnf("清理临时工作目录 %s 失败: %v", workDir, err)
 		} else {
@@ -202,6 +208,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	if err := packer.Pack(workDir, outputFile); err != nil {
 		return fmt.Errorf("打包失败: %w", err)
 	}
+	packSuccess = true
 
 	log.Infof("完成！输出文件: %s，总耗时: %s", outputFile, utils.FormatDuration(time.Since(startTime)))
 	return nil

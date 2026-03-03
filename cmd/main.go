@@ -104,25 +104,25 @@ func init() {
 	flags.StringVar(&hostsRaw, "hosts", "", "指定节点列表（逗号分隔，例：10.0.0.10,10.0.0.11）")
 
 	// SSH 参数
-	// --ssh-user: SSH 用户名（必填）
+	// --ssh-user: SSH 用户名（可选，默认为当前 OS 用户）
 	// --ssh-key: SSH 私钥路径（可选）
 	// --insecure-hostkey: 跳过主机密钥校验（不安全）
 	// --ssh-password: SSH 密码
 	// --ssh-port: SSH 端口
 	flags.IntVar(&cfg.SSHPort, "ssh-port", 22, "SSH 端口")
-	flags.StringVar(&cfg.SSHUser, "ssh-user", "", "SSH 用户名（必填）")
+	flags.StringVar(&cfg.SSHUser, "ssh-user", "", "SSH 用户名（默认为当前系统用户）")
 	flags.StringVar(&cfg.SSHKey, "ssh-key", "", "SSH 私钥路径（可选）")
 	flags.BoolVar(&cfg.InsecureHostKey, "insecure-hostkey", false, "跳过 SSH 主机密钥校验（不安全）")
 	flags.StringVar(&cfg.SSHPassword, "ssh-password", "", "SSH 密码")
 
 	// 数据库参数
 	// --db-port: 数据库端口（默认 5432）
-	// --db-user: 数据库用户名（默认 postgres）
-	// --db-password: 数据库密码
+	// --db-user: 数据库用户名（默认与 --ssh-user 一致）
+	// --db-password: 数据库密码（本地 peer 认证时无需指定）
 	// --db-name: 数据库名称（默认 postgres）
 	flags.IntVar(&cfg.DBPort, "db-port", 5432, "数据库端口")
-	flags.StringVar(&cfg.DBUser, "db-user", "postgres", "数据库用户名")
-	flags.StringVar(&cfg.DBPassword, "db-password", "", "数据库密码")
+	flags.StringVar(&cfg.DBUser, "db-user", "", "数据库用户名（默认与 SSH 用户一致）")
+	flags.StringVar(&cfg.DBPassword, "db-password", "", "数据库密码（peer 认证时无需指定）")
 	flags.StringVar(&cfg.DBName, "db-name", "postgres", "数据库名称")
 
 	// 时间参数
