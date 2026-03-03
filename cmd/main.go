@@ -12,6 +12,7 @@ import (
 	"dbpacklogs/pkg/utils"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var cfg = &config.Config{}
@@ -95,48 +96,61 @@ func checkOutputDir(path string) error {
 }
 
 func init() {
-	flags := rootCmd.Flags()
+	// 按功能分组定义 flag，各组独立注册，用于 help 分类展示
+	nodeFlags := pflag.NewFlagSet("node", pflag.ContinueOnError)
+	sshFlags := pflag.NewFlagSet("ssh", pflag.ContinueOnError)
+	dbFlags := pflag.NewFlagSet("db", pflag.ContinueOnError)
+	timeFlags := pflag.NewFlagSet("time", pflag.ContinueOnError)
+	outputFlags := pflag.NewFlagSet("output", pflag.ContinueOnError)
 
-	// 节点参数
-	// --hosts: 指定节点列表，逗号分隔
-	// --all-hosts: 从 /etc/hosts 读取所有节点
-	flags.BoolVar(&cfg.AllHosts, "all-hosts", false, "收集所有探测到的节点日志")
-	flags.StringVar(&hostsRaw, "hosts", "", "指定节点列表（逗号分隔，例：10.0.0.10,10.0.0.11）")
+	// 节点参数（--hosts / --all-hosts 二选一）
+	nodeFlags.StringVar(&hostsRaw, "hosts", "", "指定节点列表，逗号分隔（例：10.0.0.10,10.0.0.11）")
+	nodeFlags.BoolVar(&cfg.AllHosts, "all-hosts", false, "自动从 /etc/hosts 读取所有节点（与 --hosts 互斥）")
 
 	// SSH 参数
-	// --ssh-user: SSH 用户名（可选，默认为当前 OS 用户）
-	// --ssh-key: SSH 私钥路径（可选）
-	// --insecure-hostkey: 跳过主机密钥校验（不安全）
-	// --ssh-password: SSH 密码
-	// --ssh-port: SSH 端口
-	flags.IntVar(&cfg.SSHPort, "ssh-port", 22, "SSH 端口")
-	flags.StringVar(&cfg.SSHUser, "ssh-user", "", "SSH 用户名（默认为当前系统用户）")
-	flags.StringVar(&cfg.SSHKey, "ssh-key", "", "SSH 私钥路径（可选）")
-	flags.BoolVar(&cfg.InsecureHostKey, "insecure-hostkey", false, "跳过 SSH 主机密钥校验（不安全）")
-	flags.StringVar(&cfg.SSHPassword, "ssh-password", "", "SSH 密码")
+	sshFlags.StringVar(&cfg.SSHUser, "ssh-user", "", "SSH 用户名（默认为当前系统用户）")
+	sshFlags.IntVar(&cfg.SSHPort, "ssh-port", 22, "SSH 端口")
+	sshFlags.StringVar(&cfg.SSHPassword, "ssh-password", "", "SSH 密码（已配置免密 SSH 时无需指定）")
+	sshFlags.StringVar(&cfg.SSHKey, "ssh-key", "", "SSH 私钥路径（默认自动尝试 ~/.ssh/id_rsa、~/.ssh/id_ed25519）")
+	sshFlags.BoolVar(&cfg.InsecureHostKey, "insecure-hostkey", false, "跳过 SSH 主机密钥校验，适用于首次连接未知主机（不安全）")
 
 	// 数据库参数
-	// --db-port: 数据库端口（默认 5432）
-	// --db-user: 数据库用户名（默认与 --ssh-user 一致）
-	// --db-password: 数据库密码（本地 peer 认证时无需指定）
-	// --db-name: 数据库名称（默认 postgres）
-	flags.IntVar(&cfg.DBPort, "db-port", 5432, "数据库端口")
-	flags.StringVar(&cfg.DBUser, "db-user", "", "数据库用户名（默认与 SSH 用户一致）")
-	flags.StringVar(&cfg.DBPassword, "db-password", "", "数据库密码（peer 认证时无需指定）")
-	flags.StringVar(&cfg.DBName, "db-name", "postgres", "数据库名称")
+	dbFlags.StringVar(&cfg.DBUser, "db-user", "", "数据库用户名（默认与 SSH 用户一致）")
+	dbFlags.IntVar(&cfg.DBPort, "db-port", 5432, "数据库端口")
+	dbFlags.StringVar(&cfg.DBPassword, "db-password", "", "数据库密码（peer/trust 认证时无需指定）")
+	dbFlags.StringVar(&cfg.DBName, "db-name", "postgres", "数据库名称")
 
-	// 时间参数
-	// --start-time: 收集起始时间（默认最近3天）
-	// --end-time: 收集结束时间（默认当前时间）
-	// 支持格式：2006-01-02 15:04:05 / 2006-01-02T15:04:05 / 2006-01-02 / 20060102
-	flags.StringVar(&cfg.StartTime, "start-time", "", "日志收集起始时间（不填则默认最近3天，格式：2006-01-02 15:04:05）")
-	flags.StringVar(&cfg.EndTime, "end-time", "", "日志收集结束时间（不填则为当前时间）")
+	// 时间参数（支持格式：2006-01-02 15:04:05 / 2006-01-02T15:04:05 / 2006-01-02 / 20060102）
+	timeFlags.StringVar(&cfg.StartTime, "start-time", "", "收集起始时间（不填默认最近 3 天，支持格式：2006-01-02 / 2006-01-02 15:04:05）")
+	timeFlags.StringVar(&cfg.EndTime, "end-time", "", "收集结束时间（不填默认当前时间）")
 
 	// 输出参数
-	// --output: 输出目录（默认当前目录）
-	// --pack-type: 打包类型（zip/tar，默认 zip）
-	// --verbose: 启用调试日志
-	flags.StringVar(&cfg.Output, "output", ".", "收集结果保存路径（默认当前目录）")
-	flags.StringVar(&cfg.PackType, "pack-type", "zip", "打包类型：zip（默认）或 tar")
-	flags.BoolVar(&cfg.Verbose, "verbose", false, "启用调试模式（显示 DEBUG 日志）")
+	outputFlags.StringVar(&cfg.Output, "output", ".", "输出目录（默认当前目录）")
+	outputFlags.StringVar(&cfg.PackType, "pack-type", "zip", "打包格式：zip（默认）或 tar（TAR.GZ）")
+	outputFlags.BoolVar(&cfg.Verbose, "verbose", false, "启用调试模式（显示 DEBUG 日志）")
+
+	// 将所有分组注册到命令，使解析生效
+	rootCmd.Flags().AddFlagSet(nodeFlags)
+	rootCmd.Flags().AddFlagSet(sshFlags)
+	rootCmd.Flags().AddFlagSet(dbFlags)
+	rootCmd.Flags().AddFlagSet(timeFlags)
+	rootCmd.Flags().AddFlagSet(outputFlags)
+
+	// 自定义 help，按分组有序展示
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		fmt.Println(cmd.Long)
+		fmt.Printf("\nUsage:\n  %s [flags]\n", cmd.Name())
+
+		printFlagGroup("节点参数（--hosts 与 --all-hosts 二选一）", nodeFlags)
+		printFlagGroup("SSH 参数", sshFlags)
+		printFlagGroup("数据库参数", dbFlags)
+		printFlagGroup("时间参数", timeFlags)
+		printFlagGroup("输出参数", outputFlags)
+	})
+}
+
+// printFlagGroup 打印单个 flag 分组的帮助信息
+func printFlagGroup(title string, fs *pflag.FlagSet) {
+	fmt.Printf("\n%s:\n", title)
+	fmt.Print(fs.FlagUsages())
 }
