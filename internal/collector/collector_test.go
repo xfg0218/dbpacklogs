@@ -129,8 +129,8 @@ func TestFilterNodesByHosts_NoMatch_FallbackToSyntheticNodes(t *testing.T) {
 	if result[0].Host != "10.0.0.99" {
 		t.Errorf("result[0].Host = %q, want '10.0.0.99'", result[0].Host)
 	}
-	if result[0].Role != "primary" {
-		t.Errorf("result[0].Role = %q, want 'primary' (synthetic default)", result[0].Role)
+	if result[0].Role != "unknown" {
+		t.Errorf("result[0].Role = %q, want 'unknown' (synthetic default)", result[0].Role)
 	}
 	if result[0].DBType != detector.DBTypePostgres {
 		t.Errorf("result[0].DBType = %q, want 'postgres'", result[0].DBType)

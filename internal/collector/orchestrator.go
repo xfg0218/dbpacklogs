@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -186,7 +187,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		})
 	}
 
-	if err := eg.Wait(); err != nil && err != context.Canceled {
+	if err := eg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("并发收集出错: %w", err)
 	}
 
@@ -226,13 +227,13 @@ func filterNodesByHosts(nodes []detector.NodeInfo, hosts []string, dbPort int, d
 			filtered = append(filtered, n)
 		}
 	}
-	// 若过滤后为空（hosts 中有不属于集群的节点），直接添加为当前 DBType 单节点
+		// 若过滤后为空（hosts 中有不属于集群的节点），直接添加为当前 DBType 单节点
 	if len(filtered) == 0 {
 		for _, h := range hosts {
 			filtered = append(filtered, detector.NodeInfo{
 				Host:   h,
 				Port:   dbPort,
-				Role:   "primary",
+				Role:   "unknown",
 				DBType: dbType,
 			})
 		}

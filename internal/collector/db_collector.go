@@ -94,6 +94,12 @@ func (c *DBCollector) getConfigFilePaths(node detector.NodeInfo) []configPath {
 
 // queryDataDir 通过 SSH 查询节点的 data_directory
 func (c *DBCollector) queryDataDir(sshClient *intssh.SSHClient, node detector.NodeInfo) (string, error) {
+	// 验证参数中不含单引号，防止 shell 注入
+	for _, v := range []string{node.Host, c.cfg.DBUser, c.cfg.DBName} {
+		if strings.Contains(v, "'") {
+			return "", fmt.Errorf("参数包含非法字符（单引号）")
+		}
+	}
 	// 使用单引号包裹参数，避免命令注入
 	cmd := fmt.Sprintf("psql -h '%s' -p %d -U '%s' -d '%s' -t -A -c \"SELECT current_setting('data_directory')\" 2>/dev/null || echo ''",
 		node.Host, node.Port, c.cfg.DBUser, c.cfg.DBName)

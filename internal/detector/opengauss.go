@@ -64,6 +64,13 @@ func (a *OpenGaussAdapter) discoverSingleNode() ([]NodeInfo, error) {
 		return nil, fmt.Errorf("DBHost 未配置")
 	}
 
+	// 验证参数中不含单引号，防止 shell 注入
+	for _, v := range []string{a.cfg.DBHost, a.cfg.DBUser, a.cfg.DBName} {
+		if strings.Contains(v, "'") {
+			return nil, fmt.Errorf("参数包含非法字符（单引号）")
+		}
+	}
+
 	// 使用单引号包裹参数，避免注入
 	cmd := fmt.Sprintf(
 		`gsql -h '%s' -p %d -U '%s' -d '%s' -c "SELECT current_setting('data_directory')" -t -A 2>/dev/null || echo ''`,
