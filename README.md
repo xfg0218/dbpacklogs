@@ -714,6 +714,18 @@ make lint            # Run linter
 make clean           # Remove build artifacts
 ```
 
+### 15.3 测试命令
+
+```bash
+make test                    # Run all tests
+go test ./...               # Run all tests (alternative)
+go test ./internal/...      # Run tests for internal packages only
+go test -v ./pkg/utils/     # Run tests for specific package with verbose output
+go test -run TestFormatBytes ./pkg/utils/  # Run specific test function
+```
+
+> **Note**: Some tests may require appropriate SSH connections or database instances to run properly. If tests timeout, it may be due to external dependencies. For pure unit tests without external dependencies, use the specific package path (e.g., `go test ./pkg/utils/`).
+
 ### 15.3 Adding a New Database
 
 1. Define the adapter in `detector/adapter.go` (implement `DBAdapter`).

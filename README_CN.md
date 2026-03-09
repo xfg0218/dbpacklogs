@@ -714,6 +714,18 @@ make lint            # 运行代码检查
 make clean           # 清理构建产物
 ```
 
+### 15.3 测试命令
+
+```bash
+make test                    # 运行所有测试
+go test ./...               # 运行所有测试 (替代方案)
+go test ./internal/...      # 仅运行 internal 包的测试
+go test -v ./pkg/utils/     # 运行特定包的测试并显示详细输出
+go test -run TestFormatBytes ./pkg/utils/  # 运行特定测试函数
+```
+
+> **注意**: 某些测试可能需要适当的 SSH 连接或数据库实例才能正常运行。如果测试超时，可能是由于外部依赖。对于不依赖外部资源的纯单元测试，使用特定包路径（例如 `go test ./pkg/utils/`）。
+
 ### 15.3 添加新数据库支持
 
 1. 在 `detector/adapter.go` 中添加新的 `DBType` 常量。
