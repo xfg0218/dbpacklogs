@@ -67,6 +67,9 @@ DBpackLogs is an enterprise-grade database log collection and packaging tool. It
 | **Concurrent collection** | Collects from multiple nodes in parallel to reduce total time |
 | **Graceful shutdown** | Handles Ctrl+C / SIGTERM cleanly |
 | **Debug mode** | Detailed debug-level log output via `--verbose` |
+| **Security hardening** | SSH command injection prevention via stdin path passing |
+| **Timezone support** | TimeFilter supports Location timezone parameter for accurate filtering |
+| **Improved error handling** | Enhanced error messages and better failure isolation |
 
 ---
 
@@ -643,6 +646,9 @@ Use `--hosts` with a comma-separated list of IPs.
 **Q3: How do I limit the time range?**
 Pass `--start-time` and `--end-time`. The maximum range is 90 days; if exceeded, the start time is adjusted automatically.
 
+**Q3.1: How does timezone handling work?**
+The TimeFilter now supports a Location timezone parameter. All time parsing and filtering operations respect the configured timezone for accurate log filtering across different regions.
+
 **Q4: SSH authentication fails — what should I do?**
 1. Confirm the username and password/key are correct.
 2. Check the SSH port (`--ssh-port`).
@@ -661,11 +667,39 @@ Pass `--start-time` and `--end-time`. The maximum range is 90 days; if exceeded,
 **Q7: How do I handle a large cluster?**
 Collect in batches using `--hosts`, use `--pack-type tar` for better compression speed, and narrow the time window.
 
+**Q8: What security improvements were made?**
+The tool now uses stdin to pass file paths to remote SSH commands instead of embedding them in command strings. This prevents potential command injection attacks. Additionally, all user inputs are validated for shell-dangerous characters before use.
+
 ---
 
-## 15. Development Guide
+## 16. Recent Improvements
 
-### 15.1 Project Structure
+### 16.1 Security Hardening (Latest)
+
+- **SSH Command Injection Prevention**: File paths are now passed via stdin to remote SSH commands instead of being interpolated into command strings
+- **Input Validation**: Enhanced validation of user inputs to reject shell-dangerous characters
+- **Secure Random Generation**: Replaced `math/rand` with `crypto/rand` for security-sensitive random number generation
+
+### 16.2 Design Improvements
+
+- **Unified DSN Building**: All database adapters now use `cfg.BuildDSN(host, port, timeout)` for consistent connection string construction
+- **Improved Concurrency**: Better context handling in errgroup with proper cancellation propagation
+- **Enhanced Error Messages**: More descriptive error messages with context for easier troubleshooting
+
+### 16.3 Database Detection
+
+- **Regex-based Priority Matching**: Database type detection now uses regex patterns with priority ordering to correctly identify databases even when version strings contain multiple database names
+
+### 16.4 Timezone Support
+
+- **Location Parameter**: TimeFilter now accepts a Location timezone parameter
+- **Accurate Filtering**: Time-based log filtering now correctly handles timezone conversions for cross-region deployments
+
+---
+
+## 17. Development Guide
+
+### 17.1 Project Structure
 
 ```
 dbpacklogs/
@@ -703,7 +737,7 @@ dbpacklogs/
         └── format.go            # Time parsing, byte/duration formatting
 ```
 
-### 15.2 Build Commands
+### 17.2 Build Commands
 
 ```bash
 make build           # Build for current platform → ./bin/dbpacklogs
@@ -714,7 +748,7 @@ make lint            # Run linter
 make clean           # Remove build artifacts
 ```
 
-### 15.3 测试命令
+### 17.3 Test Commands
 
 ```bash
 make test                    # Run all tests
@@ -726,7 +760,7 @@ go test -run TestFormatBytes ./pkg/utils/  # Run specific test function
 
 > **Note**: Some tests may require appropriate SSH connections or database instances to run properly. If tests timeout, it may be due to external dependencies. For pure unit tests without external dependencies, use the specific package path (e.g., `go test ./pkg/utils/`).
 
-### 15.3 Adding a New Database
+### 17.4 Adding a New Database
 
 1. Define the adapter in `detector/adapter.go` (implement `DBAdapter`).
 2. Create `detector/<dbname>.go` with `Detect()`, `DiscoverNodes()`, `GetLogPaths()`.
