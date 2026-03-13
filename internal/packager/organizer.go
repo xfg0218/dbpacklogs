@@ -1,8 +1,8 @@
 package packager
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,17 +27,24 @@ func NewOrganizer() *Organizer {
 }
 
 // NewWorkDir 在 outputBase 下创建以时间戳命名的工作根目录
-// 格式：DBpackLogs_<YYYYMMDD_HHmmss>_<随机6位数字>
+// 格式：DBpackLogs_<YYYYMMDD_HHmmss>_<随机 6 位数字>
+// 使用 crypto/rand 保证随机性和安全性
 func NewWorkDir(outputBase string) (string, error) {
 	if outputBase == "" {
 		outputBase = "."
 	}
-	// 添加随机数避免同一秒内多次运行冲突
-	randomPart := rand.Intn(1000000)
-	dirName := fmt.Sprintf("DBpackLogs_%s_%06d", time.Now().Format("20060102_150405"), randomPart)
+	// 使用 crypto/rand 生成安全的随机数，避免同一秒内多次运行冲突
+	randomPart := make([]byte, 3)
+	if _, err := rand.Read(randomPart); err != nil {
+		return "", fmt.Errorf("生成随机数失败：%w", err)
+	}
+	randomNum := int(randomPart[0])<<16 | int(randomPart[1])<<8 | int(randomPart[2])
+	randomNum = randomNum % 1000000 // 限制为 6 位数字
+
+	dirName := fmt.Sprintf("DBpackLogs_%s_%06d", time.Now().Format("20060102_150405"), randomNum)
 	workDir := filepath.Join(outputBase, dirName)
 	if err := os.MkdirAll(workDir, 0755); err != nil {
-		return "", fmt.Errorf("创建工作目录 %s 失败: %w", workDir, err)
+		return "", fmt.Errorf("创建工作目录 %s 失败：%w", workDir, err)
 	}
 	return workDir, nil
 }
@@ -53,7 +60,7 @@ func (o *Organizer) NodeDir(workDir string, node detector.NodeInfo) (NodePaths, 
 	}
 	for _, dir := range []string{paths.DBInfo, paths.DBLogs, paths.OSInfo} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return NodePaths{}, fmt.Errorf("创建节点目录 %s 失败: %w", dir, err)
+			return NodePaths{}, fmt.Errorf("创建节点目录 %s 失败：%w", dir, err)
 		}
 	}
 	return paths, nil

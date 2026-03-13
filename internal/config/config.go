@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"strings"
@@ -128,8 +129,43 @@ func IsIP(s string) bool {
 	return true
 }
 
-// Validate 校验配置合法性，并自动推导 DBHost / SSHUser / DBUser
+// BuildDSN 构建 PostgreSQL/Greenplum/openGauss 连接字符串（libpq key=value 格式）。
+// connect_timeout 单位为秒，传 0 时不追加该参数（使用默认值）。
+func (c *Config) BuildDSN(host string, port int, connectTimeoutSec int) string {
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+		host, port, c.DBUser, c.DBPassword, c.DBName)
+	if connectTimeoutSec > 0 {
+		dsn += fmt.Sprintf(" connect_timeout=%d", connectTimeoutSec)
+	}
+	return dsn
+}
+
+// Validate 纯粹校验配置字段合法性，不产生任何副作用（不修改配置）。
+// 调用前应先调用 Initialize() 完成自动推导，否则 DBHost/SSHUser 等字段可能为空。
 func (c *Config) Validate() error {
+	if c.AllHosts && len(c.Hosts) > 0 {
+		return errors.New("--all-hosts 与 --hosts 互斥，不能同时指定")
+	}
+	if !c.AllHosts && len(c.Hosts) == 0 {
+		return errors.New("必须指定 --hosts 或 --all-hosts")
+	}
+	if c.SSHUser == "" {
+		return errors.New("SSHUser 未初始化，请先调用 Initialize()")
+	}
+	if c.PackType != "zip" && c.PackType != "tar" {
+		return errors.New("--pack-type 只支持 zip 或 tar")
+	}
+	return nil
+}
+
+// Initialize 自动推导并填充配置默认值（有副作用），然后调用 Validate() 执行纯粹校验。
+// 调用方应使用此方法代替直接调用 Validate()。
+// 内部执行的操作：
+//   - 若未指定 --ssh-user，从当前 OS 用户推导
+//   - 若未指定 --db-user，与 SSHUser 保持一致
+//   - 若指定 --all-hosts，读取 /etc/hosts 填充 Hosts
+//   - 若 DBHost 为空，从 Hosts[0] 自动推导
+func (c *Config) Initialize() error {
 	if c.AllHosts && len(c.Hosts) > 0 {
 		return errors.New("--all-hosts 与 --hosts 互斥，不能同时指定")
 	}

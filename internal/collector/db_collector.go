@@ -162,8 +162,7 @@ func (c *DBCollector) collectTopology(node detector.NodeInfo, dbInfoDir string) 
 		return nil
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		node.Host, node.Port, c.cfg.DBUser, c.cfg.DBPassword, c.cfg.DBName)
+	dsn := c.cfg.BuildDSN(node.Host, node.Port, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -295,13 +294,17 @@ func (c *DBCollector) CollectLogs(sshClient *intssh.SSHClient, node detector.Nod
 		}
 
 		if err := intssh.RemoteCompress(sshClient, files, f); err != nil {
-			_ = f.Close()
+			if closeErr := f.Close(); closeErr != nil {
+				log.Warnf("[%s] 关闭输出文件失败: %v", node.Host, closeErr)
+			}
 			// 删除因传输失败而残留的空文件，避免遗留无效压缩包
 			_ = os.Remove(outFile)
 			log.Warnf("[%s] 流式传输日志失败: %v", node.Host, err)
 			continue
 		}
-		_ = f.Close()
+		if closeErr := f.Close(); closeErr != nil {
+			log.Warnf("[%s] 关闭输出文件失败: %v", node.Host, closeErr)
+		}
 		log.Infof("[%s] 日志传输完成: %s", node.Host, outFile)
 	}
 	return nil

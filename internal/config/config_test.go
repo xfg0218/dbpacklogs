@@ -90,8 +90,8 @@ func TestValidate_MutualExclusion(t *testing.T) {
 		Hosts:    []string{"10.0.0.1"},
 		PackType: "zip",
 	}
-	if err := cfg.Validate(); err == nil {
-		t.Error("Validate() should return error when both --all-hosts and --hosts specified")
+	if err := cfg.Initialize(); err == nil {
+		t.Error("Initialize() should return error when both --all-hosts and --hosts specified")
 	}
 }
 
@@ -99,8 +99,8 @@ func TestValidate_NeitherSpecified(t *testing.T) {
 	cfg := &Config{
 		PackType: "zip",
 	}
-	if err := cfg.Validate(); err == nil {
-		t.Error("Validate() should return error when neither --all-hosts nor --hosts specified")
+	if err := cfg.Initialize(); err == nil {
+		t.Error("Initialize() should return error when neither --all-hosts nor --hosts specified")
 	}
 }
 
@@ -109,8 +109,8 @@ func TestValidate_InvalidPackType(t *testing.T) {
 		Hosts:    []string{"10.0.0.1"},
 		PackType: "bz2",
 	}
-	if err := cfg.Validate(); err == nil {
-		t.Error("Validate() should return error for invalid pack type")
+	if err := cfg.Initialize(); err == nil {
+		t.Error("Initialize() should return error for invalid pack type")
 	}
 }
 
@@ -120,11 +120,11 @@ func TestValidate_SSHUserDefault(t *testing.T) {
 		PackType: "zip",
 		SSHUser:  "", // 未指定，应自动填充
 	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() unexpected error: %v", err)
+	if err := cfg.Initialize(); err != nil {
+		t.Fatalf("Initialize() unexpected error: %v", err)
 	}
 	if cfg.SSHUser == "" {
-		t.Error("Validate() should auto-fill SSHUser from current OS user")
+		t.Error("Initialize() should auto-fill SSHUser from current OS user")
 	}
 }
 
@@ -135,11 +135,11 @@ func TestValidate_DBUserDefaultsToSSHUser(t *testing.T) {
 		SSHUser:  "testuser",
 		DBUser:   "", // 未指定，应与 SSHUser 一致
 	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() unexpected error: %v", err)
+	if err := cfg.Initialize(); err != nil {
+		t.Fatalf("Initialize() unexpected error: %v", err)
 	}
 	if cfg.DBUser != "testuser" {
-		t.Errorf("Validate() DBUser = %q, want %q", cfg.DBUser, "testuser")
+		t.Errorf("Initialize() DBUser = %q, want %q", cfg.DBUser, "testuser")
 	}
 }
 
@@ -149,11 +149,11 @@ func TestValidate_DBHostFromFirstHost(t *testing.T) {
 		PackType: "zip",
 		SSHUser:  "user",
 	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() unexpected error: %v", err)
+	if err := cfg.Initialize(); err != nil {
+		t.Fatalf("Initialize() unexpected error: %v", err)
 	}
 	if cfg.DBHost != "10.0.0.10" {
-		t.Errorf("Validate() DBHost = %q, want %q", cfg.DBHost, "10.0.0.10")
+		t.Errorf("Initialize() DBHost = %q, want %q", cfg.DBHost, "10.0.0.10")
 	}
 }
 
@@ -164,8 +164,8 @@ func TestValidate_ValidPackTypes(t *testing.T) {
 			PackType: pt,
 			SSHUser:  "user",
 		}
-		if err := cfg.Validate(); err != nil {
-			t.Errorf("Validate() with pack-type=%q unexpected error: %v", pt, err)
+		if err := cfg.Initialize(); err != nil {
+			t.Errorf("Initialize() with pack-type=%q unexpected error: %v", pt, err)
 		}
 	}
 }

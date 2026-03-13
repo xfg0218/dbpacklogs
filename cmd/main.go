@@ -31,7 +31,7 @@ var rootCmd = &cobra.Command{
 		defer utils.Sync()
 		log := utils.GetLogger()
 
-		if err := cfg.Validate(); err != nil {
+		if err := cfg.Initialize(); err != nil {
 			return fmt.Errorf("参数校验失败: %w", err)
 		}
 

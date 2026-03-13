@@ -10,51 +10,81 @@ import (
 	"dbpacklogs/pkg/utils"
 )
 
-// TimeFilter 持有已解析的开始/结束时间
+const (
+	// defaultLookbackDuration 是未指定起始时间时的默认回溯时长（72 小时 = 3 天）
+	defaultLookbackDuration = 72 * time.Hour
+
+	// maxTimeRangeDays 是允许的最大时间跨度天数
+	maxTimeRangeDays = 90
+
+	// maxTimeRangeDuration 是允许的最大时间跨度
+	maxTimeRangeDuration = maxTimeRangeDays * 24 * time.Hour
+)
+
+// TimeFilter 持有已解析的开始/结束时间和时区信息
 type TimeFilter struct {
-	Start time.Time
-	End   time.Time
+	Start    time.Time
+	End      time.Time
+	Location *time.Location // 用于解析远端日志的时区
 }
 
 // NewTimeFilter 构建时间过滤器。
 // 若 startStr/endStr 为空，默认收集最近 3 天。
-func NewTimeFilter(startStr, endStr string) (*TimeFilter, error) {
-	now := time.Now()
-	start := now.Add(-72 * time.Hour) // 默认：最近3天
+// location 参数用于解析远端日志时间戳，若为 nil 则使用本地时区。
+// 验证顺序：
+//  1. 解析时间字符串
+//  2. 若 end 在未来，截断为当前时间（并给出警告）
+//  3. 验证 end > start（截断后再检查，避免误导性错误）
+//  4. 若时间跨度超过 90 天，截断 start
+func NewTimeFilter(startStr, endStr string, location *time.Location) (*TimeFilter, error) {
+	if location == nil {
+		location = time.Local
+	}
+
+	now := time.Now().In(location)
+	start := now.Add(-defaultLookbackDuration) // 默认：最近 3 天
 	end := now
 
 	if startStr != "" {
 		t, err := utils.ParseTimeFlexible(startStr)
 		if err != nil {
-			return nil, fmt.Errorf("解析 --start-time 失败: %w", err)
+			return nil, fmt.Errorf("解析 --start-time 失败：%w", err)
 		}
-		start = t
+		// 将用户输入的时间转换到目标时区
+		start = t.In(location)
 	}
 	if endStr != "" {
 		t, err := utils.ParseTimeFlexible(endStr)
 		if err != nil {
-			return nil, fmt.Errorf("解析 --end-time 失败: %w", err)
+			return nil, fmt.Errorf("解析 --end-time 失败：%w", err)
 		}
-		end = t
+		// 将用户输入的时间转换到目标时区
+		end = t.In(location)
 	}
-	if !end.After(start) {
-		return nil, fmt.Errorf("--end-time 必须晚于 --start-time")
-	}
-	// 警告：如果结束时间在未来，提示用户
+
+	// 先截断未来时间，再验证先后关系，避免截断后错误信息混乱
 	if end.After(now) {
 		utils.GetLogger().Warnf("指定的结束时间 %s 在未来，已调整为当前时间", end.Format("2006-01-02 15:04:05"))
 		end = now
-		if !end.After(start) {
-			return nil, fmt.Errorf("--end-time 必须晚于 --start-time（结束时间已调整为当前时间）")
-		}
 	}
-	// 限制最大时间范围为 90 天
-	maxDuration := 90 * 24 * time.Hour
-	if end.Sub(start) > maxDuration {
-		utils.GetLogger().Warnf("指定的时间范围超过 90 天，已限制为 90 天")
-		start = end.Add(-maxDuration)
+
+	// 统一在此处校验 end > start（截断之后）
+	if !end.After(start) {
+		return nil, fmt.Errorf("--end-time 必须晚于 --start-time（结束时间：%s，开始时间：%s）",
+			end.Format("2006-01-02 15:04:05"), start.Format("2006-01-02 15:04:05"))
 	}
-	return &TimeFilter{Start: start, End: end}, nil
+
+	// 限制最大时间范围
+	if end.Sub(start) > maxTimeRangeDuration {
+		utils.GetLogger().Warnf("指定的时间范围超过 %d 天，已限制为 %d 天", maxTimeRangeDays, maxTimeRangeDays)
+		start = end.Add(-maxTimeRangeDuration)
+	}
+
+	return &TimeFilter{
+		Start:    start,
+		End:      end,
+		Location: location,
+	}, nil
 }
 
 // FindArgs 生成 find 命令时间过滤参数
@@ -81,7 +111,7 @@ func (tf *TimeFilter) FilterDmesg(raw []byte) []byte {
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	for scanner.Scan() {
 		line := scanner.Text()
-		t, err := parseDmesgTimestamp(line)
+		t, err := parseDmesgTimestamp(line, tf.Location)
 		if err != nil {
 			// 无法解析时间戳的行直接保留（如头部信息）
 			result.WriteString(line + "\n")
@@ -100,7 +130,7 @@ func (tf *TimeFilter) FilterDmesg(raw []byte) []byte {
 // - [Tue Feb  2 12:00:00 2026]
 // - Feb 21 12:00:00 hostname kernel:
 // - Feb  2 12:00:00 hostname kernel:
-func parseDmesgTimestamp(line string) (time.Time, error) {
+func parseDmesgTimestamp(line string, loc *time.Location) (time.Time, error) {
 	line = strings.TrimSpace(line)
 	if len(line) == 0 {
 		return time.Time{}, fmt.Errorf("空行")
@@ -113,7 +143,7 @@ func parseDmesgTimestamp(line string) (time.Time, error) {
 			return time.Time{}, fmt.Errorf("缺少右括号")
 		}
 		tsStr := strings.TrimSpace(line[1:end])
-		return parseDmesgFormat(tsStr)
+		return parseDmesgFormat(tsStr, loc)
 	}
 
 	// 尝试提取行首时间 Feb 21 12:00:00 或 Feb  2 12:00:00
@@ -124,7 +154,7 @@ func parseDmesgTimestamp(line string) (time.Time, error) {
 		if isMonth(monthPart) {
 			// 尝试解析 "Feb 21 12:00:00" 或 "Feb  2 12:00:00"
 			tsStr := parts[0] + " " + parts[1] + " " + parts[2]
-			if t, err := parseDmesgFormat(tsStr); err == nil {
+			if t, err := parseDmesgFormat(tsStr, loc); err == nil {
 				return t, nil
 			}
 		}
@@ -146,7 +176,12 @@ func isMonth(s string) bool {
 }
 
 // parseDmesgFormat 尝试多种格式解析 dmesg 时间戳
-func parseDmesgFormat(tsStr string) (time.Time, error) {
+// 使用传入的 location 参数解析，支持跨时区场景
+func parseDmesgFormat(tsStr string, loc *time.Location) (time.Time, error) {
+	if loc == nil {
+		loc = time.Local
+	}
+
 	formats := []string{
 		"Mon Jan 2 15:04:05 2006",
 		"Mon Jan  2 15:04:05 2006",
@@ -158,14 +193,14 @@ func parseDmesgFormat(tsStr string) (time.Time, error) {
 	}
 
 	for _, layout := range formats {
-		if t, err := time.ParseInLocation(layout, tsStr, time.Local); err == nil {
+		if t, err := time.ParseInLocation(layout, tsStr, loc); err == nil {
 			// 如果没有年份，使用当前年份
 			if t.Year() == 0 {
-				t = t.AddDate(time.Now().Year(), 0, 0)
+				t = t.AddDate(time.Now().In(loc).Year(), 0, 0)
 			}
 			return t, nil
 		}
 	}
 
-	return time.Time{}, fmt.Errorf("无法解析时间格式: %s", tsStr)
+	return time.Time{}, fmt.Errorf("无法解析时间格式：%s", tsStr)
 }

@@ -93,6 +93,12 @@ func buildAuthMethods(keyPath string, password string) []ssh.AuthMethod {
 
 	// 1. 尝试密钥认证
 	for _, kp := range candidateKeyPaths(keyPath) {
+		// 检查私钥文件权限，权限过宽时发出警告（安全最佳实践要求 0600）
+		if info, err := os.Stat(kp); err == nil {
+			if perm := info.Mode().Perm(); perm&0077 != 0 {
+				utils.GetLogger().Warnf("私钥文件 %s 权限为 %04o，建议设置为 0600（权限过宽可能被 SSH 客户端拒绝）", kp, perm)
+			}
+		}
 		key, err := os.ReadFile(kp)
 		if err != nil {
 			continue
@@ -251,13 +257,29 @@ func (c *SSHClient) UnderlyingClient() *ssh.Client {
 	return c.client
 }
 
-// IsAlive 发送一个空请求检测连接是否仍然存活
+// IsAlive 检测 SSH 连接是否仍然存活。
+// 优先使用 keepalive@openssh.com 请求（OpenSSH 扩展）；
+// 若服务器不响应该请求（部分非 OpenSSH 实现），则回退到执行空命令来验证连接。
 func (c *SSHClient) IsAlive() bool {
+	// 尝试 OpenSSH keepalive 扩展请求
 	_, _, err := c.client.SendRequest("keepalive@openssh.com", true, nil)
-	if err != nil {
-		utils.GetLogger().Debugf("SSH keepalive 检测失败: %v", err)
+	if err == nil {
+		return true
 	}
-	return err == nil
+	utils.GetLogger().Debugf("SSH keepalive@openssh.com 检测失败（%v），回退到空命令检活", err)
+
+	// 回退：执行空命令验证连接可用性（所有 SSH 服务器均支持）
+	session, err := c.client.NewSession()
+	if err != nil {
+		utils.GetLogger().Debugf("SSH 连接已断开（无法创建 session）: %v", err)
+		return false
+	}
+	defer session.Close()
+	if err := session.Run(""); err != nil {
+		// 空命令返回退出码非 0 属于正常情况（shell 的 "" 命令），只要 session 建立即表示连接存活
+		utils.GetLogger().Debugf("SSH 空命令检活完成（err=%v，连接正常）", err)
+	}
+	return true
 }
 
 // Close 关闭 SSH 连接

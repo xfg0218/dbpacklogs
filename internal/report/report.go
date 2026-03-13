@@ -55,11 +55,16 @@ func NewReporter(dbType string, totalNodes int, tf *filter.TimeFilter) *Reporter
 	}
 }
 
-// AddSuccess 记录节点成功结果
-func (r *Reporter) AddSuccess(host, role string, elapsed time.Duration) {
+// add 是内部加锁追加结果的私有方法，消除 AddSuccess/AddFailure/AddFailureWithRole 的重复模式
+func (r *Reporter) add(result NodeResult) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.results = append(r.results, NodeResult{
+	r.results = append(r.results, result)
+}
+
+// AddSuccess 记录节点成功结果
+func (r *Reporter) AddSuccess(host, role string, elapsed time.Duration) {
+	r.add(NodeResult{
 		Host:      host,
 		Role:      role,
 		Success:   true,
@@ -69,9 +74,7 @@ func (r *Reporter) AddSuccess(host, role string, elapsed time.Duration) {
 
 // AddFailure 记录节点失败结果
 func (r *Reporter) AddFailure(host, errMsg string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.results = append(r.results, NodeResult{
+	r.add(NodeResult{
 		Host:    host,
 		Role:    "unknown",
 		Success: false,
@@ -81,9 +84,7 @@ func (r *Reporter) AddFailure(host, errMsg string) {
 
 // AddFailureWithRole 记录节点失败结果（带角色信息）
 func (r *Reporter) AddFailureWithRole(host, role, errMsg string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.results = append(r.results, NodeResult{
+	r.add(NodeResult{
 		Host:    host,
 		Role:    role,
 		Success: false,

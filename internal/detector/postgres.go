@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"dbpacklogs/internal/config"
 
@@ -28,12 +27,11 @@ func (a *PostgresAdapter) Detect() (DBType, error) {
 
 // DiscoverNodes 查询 current_setting('data_directory')，返回单节点。
 // 若部署了流复制（pg_stat_replication），同时追加 standby 节点。
-// 连接地址使用 cfg.DBHost（由 config.Validate() 从 --hosts 第一个节点自动推导）。
+// 连接地址使用 cfg.DBHost（由 config.Initialize() 从 --hosts 第一个节点自动推导）。
 func (a *PostgresAdapter) DiscoverNodes() ([]NodeInfo, error) {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		a.cfg.DBHost, a.cfg.DBPort, a.cfg.DBUser, a.cfg.DBPassword, a.cfg.DBName)
+	dsn := a.cfg.BuildDSN(a.cfg.DBHost, a.cfg.DBPort, 0)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), DBConnectTimeout)
 	defer cancel()
 
 	conn, err := pgx.Connect(ctx, dsn)

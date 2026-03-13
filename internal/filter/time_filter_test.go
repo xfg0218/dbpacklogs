@@ -7,9 +7,9 @@ import (
 )
 
 func TestNewTimeFilter_Defaults(t *testing.T) {
-	tf, err := NewTimeFilter("", "")
+	tf, err := NewTimeFilter("", "", nil)
 	if err != nil {
-		t.Fatalf("NewTimeFilter(\"\", \"\") unexpected error: %v", err)
+		t.Fatalf("NewTimeFilter(\"\", \"\", nil) unexpected error: %v", err)
 	}
 	now := time.Now()
 	// 默认 start 约为 now-72h，end 约为 now
@@ -23,7 +23,7 @@ func TestNewTimeFilter_Defaults(t *testing.T) {
 }
 
 func TestNewTimeFilter_ValidRange(t *testing.T) {
-	tf, err := NewTimeFilter("2026-02-20", "2026-02-27")
+	tf, err := NewTimeFilter("2026-02-20", "2026-02-27", nil)
 	if err != nil {
 		t.Fatalf("NewTimeFilter() unexpected error: %v", err)
 	}
@@ -36,28 +36,28 @@ func TestNewTimeFilter_ValidRange(t *testing.T) {
 }
 
 func TestNewTimeFilter_EndBeforeStart(t *testing.T) {
-	_, err := NewTimeFilter("2026-02-27", "2026-02-20")
+	_, err := NewTimeFilter("2026-02-27", "2026-02-20", nil)
 	if err == nil {
 		t.Error("NewTimeFilter() should return error when end <= start")
 	}
 }
 
 func TestNewTimeFilter_EqualStartEnd(t *testing.T) {
-	_, err := NewTimeFilter("2026-02-20", "2026-02-20")
+	_, err := NewTimeFilter("2026-02-20", "2026-02-20", nil)
 	if err == nil {
 		t.Error("NewTimeFilter() should return error when end == start")
 	}
 }
 
 func TestNewTimeFilter_InvalidStartTime(t *testing.T) {
-	_, err := NewTimeFilter("not-a-date", "2026-02-27")
+	_, err := NewTimeFilter("not-a-date", "2026-02-27", nil)
 	if err == nil {
 		t.Error("NewTimeFilter() should return error for invalid start time")
 	}
 }
 
 func TestNewTimeFilter_InvalidEndTime(t *testing.T) {
-	_, err := NewTimeFilter("2026-02-20", "not-a-date")
+	_, err := NewTimeFilter("2026-02-20", "not-a-date", nil)
 	if err == nil {
 		t.Error("NewTimeFilter() should return error for invalid end time")
 	}
@@ -65,7 +65,7 @@ func TestNewTimeFilter_InvalidEndTime(t *testing.T) {
 
 func TestNewTimeFilter_MaxRange90Days(t *testing.T) {
 	// 超过 90 天应自动截断
-	tf, err := NewTimeFilter("2025-01-01", "2026-12-31")
+	tf, err := NewTimeFilter("2025-01-01", "2026-12-31", nil)
 	if err != nil {
 		t.Fatalf("NewTimeFilter() unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestNewTimeFilter_MaxRange90Days(t *testing.T) {
 func TestNewTimeFilter_FutureEndAdjusted(t *testing.T) {
 	// 指定未来时间作为 end，应被调整为 now
 	future := time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
-	tf, err := NewTimeFilter("2026-01-01", future)
+	tf, err := NewTimeFilter("2026-01-01", future, nil)
 	if err != nil {
 		t.Fatalf("NewTimeFilter() unexpected error: %v", err)
 	}
@@ -129,10 +129,64 @@ func TestTimeFilter_JournalctlArgs(t *testing.T) {
 	}
 }
 
+func TestNewTimeFilter_WithTimezone(t *testing.T) {
+	// 测试使用时区功能
+	utc, err := time.LoadLocation("UTC")
+	if err != nil {
+		t.Fatalf("Failed to load UTC location: %v", err)
+	}
+
+	tf, err := NewTimeFilter("2026-02-20", "2026-02-27", utc)
+	if err != nil {
+		t.Fatalf("NewTimeFilter() unexpected error: %v", err)
+	}
+
+	// 验证时区是否正确设置
+	if tf.Location != utc {
+		t.Errorf("Location = %v, want %v", tf.Location, utc)
+	}
+
+	// 验证时间是否转换到 UTC 时区
+	if tf.Start.Location().String() != "UTC" {
+		t.Errorf("Start location = %v, want UTC", tf.Start.Location())
+	}
+	if tf.End.Location().String() != "UTC" {
+		t.Errorf("End location = %v, want UTC", tf.End.Location())
+	}
+}
+
+func TestParseDmesgFormat_WithTimezone(t *testing.T) {
+	// 测试使用不同时区解析时间
+	utc, _ := time.LoadLocation("UTC")
+	shanghai, _ := time.LoadLocation("Asia/Shanghai")
+
+	tsStr := "Feb 21 12:00:00 2026"
+
+	utcTime, err := parseDmesgFormat(tsStr, utc)
+	if err != nil {
+		t.Errorf("parseDmesgFormat(UTC) unexpected error: %v", err)
+	}
+
+	shanghaiTime, err := parseDmesgFormat(tsStr, shanghai)
+	if err != nil {
+		t.Errorf("parseDmesgFormat(Shanghai) unexpected error: %v", err)
+	}
+
+	// 上海时区 (UTC+8) 比 UTC 早 8 小时，所以差值应该是 -8 小时
+	// 例如：UTC 时间 12:00 = 上海时间 20:00
+	// shanghaiTime.Sub(utcTime) = -8h (因为上海时区的 12:00 相当于 UTC 的 20:00)
+	diff := shanghaiTime.Sub(utcTime)
+	expectedDiff := -8 * time.Hour
+	if diff != expectedDiff {
+		t.Errorf("Time difference = %v, want %v", diff, expectedDiff)
+	}
+}
+
 func TestFilterDmesg_WithTimestamps(t *testing.T) {
 	tf := &TimeFilter{
-		Start: time.Date(2026, 2, 21, 12, 0, 0, 0, time.Local),
-		End:   time.Date(2026, 2, 21, 14, 0, 0, 0, time.Local),
+		Start:    time.Date(2026, 2, 21, 12, 0, 0, 0, time.Local),
+		End:      time.Date(2026, 2, 21, 14, 0, 0, 0, time.Local),
+		Location: time.Local,
 	}
 
 	input := `[Tue Feb 21 11:59:59 2026] before range - should be excluded
@@ -162,8 +216,9 @@ func TestFilterDmesg_WithTimestamps(t *testing.T) {
 
 func TestFilterDmesg_UnparsableLines(t *testing.T) {
 	tf := &TimeFilter{
-		Start: time.Date(2026, 2, 21, 0, 0, 0, 0, time.Local),
-		End:   time.Date(2026, 2, 22, 0, 0, 0, 0, time.Local),
+		Start:    time.Date(2026, 2, 21, 0, 0, 0, 0, time.Local),
+		End:      time.Date(2026, 2, 22, 0, 0, 0, 0, time.Local),
+		Location: time.Local,
 	}
 	input := "# This is a header line without timestamp\nsome random text\n"
 	got := string(tf.FilterDmesg([]byte(input)))
@@ -178,8 +233,9 @@ func TestFilterDmesg_UnparsableLines(t *testing.T) {
 
 func TestFilterDmesg_EmptyInput(t *testing.T) {
 	tf := &TimeFilter{
-		Start: time.Date(2026, 2, 21, 0, 0, 0, 0, time.Local),
-		End:   time.Date(2026, 2, 22, 0, 0, 0, 0, time.Local),
+		Start:    time.Date(2026, 2, 21, 0, 0, 0, 0, time.Local),
+		End:      time.Date(2026, 2, 22, 0, 0, 0, 0, time.Local),
+		Location: time.Local,
 	}
 	got := tf.FilterDmesg([]byte{})
 	if len(got) != 0 {
@@ -189,8 +245,8 @@ func TestFilterDmesg_EmptyInput(t *testing.T) {
 
 func TestParseDmesgTimestamp_BracketFormat(t *testing.T) {
 	tests := []struct {
-		line    string
-		wantErr bool
+		line     string
+		wantErr  bool
 		wantHour int
 	}{
 		{"[Tue Feb 21 12:30:00 2026] some message", false, 12},
@@ -200,7 +256,7 @@ func TestParseDmesgTimestamp_BracketFormat(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.line, func(t *testing.T) {
-			got, err := parseDmesgTimestamp(tt.line)
+			got, err := parseDmesgTimestamp(tt.line, time.Local)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("parseDmesgTimestamp(%q) expected error, got %v", tt.line, got)

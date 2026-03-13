@@ -21,6 +21,9 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+// maxNodeConcurrency 限制并发收集的节点数量上限，避免 SSH 连接和系统资源耗尽
+const maxNodeConcurrency = int64(10)
+
 // Orchestrator 编排整个日志收集流程
 type Orchestrator struct {
 	cfg *config.Config
@@ -36,33 +39,33 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	log := utils.GetLogger()
 	startTime := time.Now()
 
-	// 0. 初始化时间过滤器
-	tf, err := filter.NewTimeFilter(o.cfg.StartTime, o.cfg.EndTime)
+	// 0. 初始化时间过滤器（先使用本地时区，后续会根据远端时区调整）
+	tf, err := filter.NewTimeFilter(o.cfg.StartTime, o.cfg.EndTime, nil)
 	if err != nil {
-		return fmt.Errorf("初始化时间过滤器失败: %w", err)
+		return fmt.Errorf("初始化时间过滤器失败：%w", err)
 	}
-	log.Infof("时间范围: %s ~ %s",
+	log.Infof("时间范围：%s ~ %s",
 		tf.Start.Format("2006-01-02 15:04:05"),
 		tf.End.Format("2006-01-02 15:04:05"))
 
 	// 1. 创建本地工作目录
 	workDir, err := packager.NewWorkDir(o.cfg.Output)
 	if err != nil {
-		return fmt.Errorf("创建工作目录失败: %w", err)
+		return fmt.Errorf("创建工作目录失败：%w", err)
 	}
-	log.Infof("工作目录: %s", workDir)
+	log.Infof("工作目录：%s", workDir)
 	// packSuccess 标记打包是否成功，仅打包成功后才清理临时目录
 	// 若打包失败，保留临时目录，便于用户手动检索已收集的数据
 	packSuccess := false
 	defer func() {
 		if !packSuccess {
-			log.Warnf("打包未完成，临时工作目录已保留: %s", workDir)
+			log.Warnf("打包未完成，临时工作目录已保留：%s", workDir)
 			return
 		}
 		if err := os.RemoveAll(workDir); err != nil {
-			log.Warnf("清理临时工作目录 %s 失败: %v", workDir, err)
+			log.Warnf("清理临时工作目录 %s 失败：%v", workDir, err)
 		} else {
-			log.Debugf("已清理临时工作目录: %s", workDir)
+			log.Debugf("已清理临时工作目录：%s", workDir)
 		}
 	}()
 
@@ -77,18 +80,18 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// 3. 探测数据库类型 & 发现节点
 	adapter, err := detector.NewAdapter(o.cfg, sshPool)
 	if err != nil {
-		return fmt.Errorf("数据库探测失败: %w", err)
+		return fmt.Errorf("数据库探测失败：%w", err)
 	}
 
 	dbType, err := adapter.Detect()
 	if err != nil {
-		return fmt.Errorf("获取数据库类型失败: %w", err)
+		return fmt.Errorf("获取数据库类型失败：%w", err)
 	}
-	log.Infof("数据库类型: %s", dbType)
+	log.Infof("数据库类型：%s", dbType)
 
 	nodes, err := adapter.DiscoverNodes()
 	if err != nil {
-		return fmt.Errorf("节点发现失败: %w", err)
+		return fmt.Errorf("节点发现失败：%w", err)
 	}
 	log.Infof("发现 %d 个节点", len(nodes))
 
@@ -108,18 +111,25 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// 收集报告数据
 	rep := report.NewReporter(string(dbType), len(nodes), tf)
 
-	// 限制并发数（默认 10），避免资源耗尽
-	maxConcurrency := int64(10)
+	// 限制并发数，避免资源耗尽
+	maxConcurrency := maxNodeConcurrency
 	if int64(len(nodes)) < maxConcurrency {
 		maxConcurrency = int64(len(nodes))
 	}
+
+	// 为信号量获取创建独立的 context，与 errgroup context 解耦
+	// 这样可以在 errgroup 取消时优雅地停止获取信号量，而不影响正在执行的任务
+	semCtx, semCancel := context.WithCancel(ctx)
+	defer semCancel()
+
 	sem := semaphore.NewWeighted(maxConcurrency)
 
 	for _, node := range nodes {
 		node := node // 捕获循环变量
 		eg.Go(func() error {
 			// 获取信号量，控制并发数
-			if err := sem.Acquire(egCtx, 1); err != nil {
+			// 使用 semCtx 而非 egCtx，避免 errgroup 取消时阻塞在 Acquire 上的 goroutine 泄漏
+			if err := sem.Acquire(semCtx, 1); err != nil {
 				return err
 			}
 			defer sem.Release(1)
@@ -132,21 +142,21 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			}
 
 			nodeStart := time.Now()
-			log.Infof("[%s] 开始收集（角色: %s）", node.Host, node.Role)
+			log.Infof("[%s] 开始收集（角色：%s）", node.Host, node.Role)
 
 			// 获取 SSH 连接
 			sshClient, err := sshPool.Get(node.Host, o.cfg.SSHPort)
 			if err != nil {
-				rep.AddFailure(node.Host, fmt.Sprintf("SSH 连接失败: %v", err))
-				log.Errorf("[%s] SSH 连接失败: %v", node.Host, err)
+				rep.AddFailure(node.Host, fmt.Sprintf("SSH 连接失败：%v", err))
+				log.Errorf("[%s] SSH 连接失败：%v", node.Host, err)
 				return nil // 不传播错误，单节点失败不中断其他节点
 			}
 
 			// 创建节点目录结构
 			paths, err := org.NodeDir(workDir, node)
 			if err != nil {
-				rep.AddFailure(node.Host, fmt.Sprintf("创建节点目录失败: %v", err))
-				log.Errorf("[%s] 创建节点目录失败: %v", node.Host, err)
+				rep.AddFailure(node.Host, fmt.Sprintf("创建节点目录失败：%v", err))
+				log.Errorf("[%s] 创建节点目录失败：%v", node.Host, err)
 				return nil
 			}
 
@@ -156,21 +166,21 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			// 4a. 收集 DB 配置信息
 			var collectionErrors []string
 			if err := dbCollector.CollectInfo(sshClient, node, paths.DBInfo); err != nil {
-				errMsg := fmt.Sprintf("DB 信息收集失败: %v", err)
+				errMsg := fmt.Sprintf("DB 信息收集失败：%v", err)
 				log.Warnf("[%s] %s", node.Host, errMsg)
 				collectionErrors = append(collectionErrors, errMsg)
 			}
 
 			// 4b. 收集 DB 日志
 			if err := dbCollector.CollectLogs(sshClient, node, paths.DBLogs, tf); err != nil {
-				errMsg := fmt.Sprintf("DB 日志收集失败: %v", err)
+				errMsg := fmt.Sprintf("DB 日志收集失败：%v", err)
 				log.Warnf("[%s] %s", node.Host, errMsg)
 				collectionErrors = append(collectionErrors, errMsg)
 			}
 
-			// 4c. 收集 OS 信息
+			// 4c. 收集 OS 信息（传入远端时区）
 			if err := osCollector.CollectAll(sshClient, paths.OSInfo, tf); err != nil {
-				errMsg := fmt.Sprintf("OS 信息收集失败: %v", err)
+				errMsg := fmt.Sprintf("OS 信息收集失败：%v", err)
 				log.Warnf("[%s] %s", node.Host, errMsg)
 				collectionErrors = append(collectionErrors, errMsg)
 			}
@@ -188,13 +198,13 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	}
 
 	if err := eg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-		return fmt.Errorf("并发收集出错: %w", err)
+		return fmt.Errorf("并发收集出错：%w", err)
 	}
 
 	// 5. 生成报告
 	rep.SetTotalDuration(time.Since(startTime))
 	if err := rep.Generate(workDir); err != nil {
-		log.Warnf("生成报告失败: %v", err)
+		log.Warnf("生成报告失败：%v", err)
 	}
 
 	// 6. 打包
@@ -207,11 +217,11 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	log.Infof("开始打包 -> %s", outputFile)
 
 	if err := packer.Pack(workDir, outputFile); err != nil {
-		return fmt.Errorf("打包失败: %w", err)
+		return fmt.Errorf("打包失败：%w", err)
 	}
 	packSuccess = true
 
-	log.Infof("完成！输出文件: %s，总耗时: %s", outputFile, utils.FormatDuration(time.Since(startTime)))
+	log.Infof("完成！输出文件：%s，总耗时：%s", outputFile, utils.FormatDuration(time.Since(startTime)))
 	return nil
 }
 
@@ -227,7 +237,7 @@ func filterNodesByHosts(nodes []detector.NodeInfo, hosts []string, dbPort int, d
 			filtered = append(filtered, n)
 		}
 	}
-		// 若过滤后为空（hosts 中有不属于集群的节点），直接添加为当前 DBType 单节点
+	// 若过滤后为空（hosts 中有不属于集群的节点），直接添加为当前 DBType 单节点
 	if len(filtered) == 0 {
 		for _, h := range hosts {
 			filtered = append(filtered, detector.NodeInfo{

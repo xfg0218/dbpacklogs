@@ -9,7 +9,8 @@
       "Bash(go:*)",
       "Bash(gh:*)",
       "Bash(claude agents:*)",
-      "Bash(chmod +x:*)"
+      "Bash(chmod +x:*)",
+      "Bash(find .:*)"
     ]
   }
 }

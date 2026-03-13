@@ -64,10 +64,14 @@ func (a *OpenGaussAdapter) discoverSingleNode() ([]NodeInfo, error) {
 		return nil, fmt.Errorf("DBHost 未配置")
 	}
 
-	// 验证参数中不含单引号，防止 shell 注入
+	// 严格验证参数中不含 shell 危险字符：
+	// 单引号结束当前引用上下文，其他字符可在单引号外构造注入
+	shellDangerousChars := []string{"'", "\"", "`", ";", "|", "&", "$", "(", ")", "{", "}", "[", "]", "<", ">", "\n", "\r", " ", "\t"}
 	for _, v := range []string{a.cfg.DBHost, a.cfg.DBUser, a.cfg.DBName} {
-		if strings.Contains(v, "'") {
-			return nil, fmt.Errorf("参数包含非法字符（单引号）")
+		for _, ch := range shellDangerousChars {
+			if strings.Contains(v, ch) {
+				return nil, fmt.Errorf("参数包含非法字符（%q）", ch)
+			}
 		}
 	}
 

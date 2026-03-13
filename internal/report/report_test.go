@@ -13,7 +13,7 @@ import (
 
 func newTestTimeFilter(t *testing.T) *filter.TimeFilter {
 	t.Helper()
-	tf, err := filter.NewTimeFilter("2026-02-20", "2026-02-27")
+	tf, err := filter.NewTimeFilter("2026-02-20", "2026-02-27", nil)
 	if err != nil {
 		t.Fatalf("NewTimeFilter: %v", err)
 	}
