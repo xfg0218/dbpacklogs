@@ -18,7 +18,8 @@ English | [中文](./README_CN.md)
 12. [Configuration Examples](#12-configuration-examples)
 13. [Troubleshooting](#13-troubleshooting)
 14. [FAQ](#14-faq)
-15. [Development Guide](#15-development-guide)
+15. [Recent Improvements](#15-recent-improvements)
+16. [Development Guide](#16-development-guide)
 
 ---
 
@@ -80,7 +81,7 @@ DBpackLogs is an enterprise-grade database log collection and packaging tool. It
 | Requirement | Details |
 |-------------|---------|
 | **OS** | Linux (CentOS, RHEL, Ubuntu, Debian, etc.) |
-| **Go version** | Go 1.21 or higher (for building from source) |
+| **Go version** | Go 1.24 or higher (for building from source) |
 | **SSH access** | SSH access to all target database nodes |
 | **Disk space** | Reserve sufficient space based on expected log volume |
 
@@ -146,10 +147,10 @@ make build
 ### 5.2 Cross-Compilation
 
 ```bash
-make build-linux-amd64   # Linux AMD64
-make build-linux-arm64   # Linux ARM64
-make build-darwin-amd64  # macOS AMD64
-make build-darwin-arm64  # macOS ARM64
+GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o bin/dbpacklogs-linux-amd64 ./cmd     # Linux AMD64
+GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o bin/dbpacklogs-linux-arm64 ./cmd     # Linux ARM64
+GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o bin/dbpacklogs-darwin-amd64 ./cmd   # macOS AMD64
+GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o bin/dbpacklogs-darwin-arm64 ./cmd   # macOS ARM64
 ```
 
 ### 5.3 Pre-built Binaries
@@ -239,7 +240,7 @@ Download the binary for your platform from the [Releases](https://github.com/xfg
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--output` | `.` | Output directory |
+| `--output` | `.` | Output directory (auto-created if it does not exist) |
 | `--pack-type` | `zip` | Archive format: `zip` or `tar` |
 | `--verbose` | `false` | Enable debug logging |
 
@@ -371,6 +372,7 @@ Download the binary for your platform from the [Releases](https://github.com/xfg
     │   │       ├── dmesg.txt
     │   │       ├── journalctl.txt
     │   │       ├── raid.txt
+    │   │       ├── hosts.txt
     │   │       └── os_info.txt
     │   └── 10.0.0.11/
     │       └── ...
@@ -462,12 +464,16 @@ Total Duration: 2m30s
 
 ### 10.2 Database Type Detection
 
+Detection uses regex patterns with priority ordering to correctly identify databases even when version strings contain multiple database names (e.g., Greenplum includes "PostgreSQL"):
+
 ```go
-switch {
-case strings.Contains(version, "greenplum"):  // → GreenplumAdapter
-case strings.Contains(version, "opengauss"),
-     strings.Contains(version, "gaussdb"):    // → OpenGaussAdapter
-case strings.Contains(version, "postgresql"): // → PostgresAdapter
+var versionPatterns = []struct {
+    pattern *regexp.Regexp
+    dbType  string
+}{
+    {regexp.MustCompile(`(?i)greenplum`), "Greenplum"},           // highest priority
+    {regexp.MustCompile(`(?i)(opengauss|gaussdb)`), "openGauss"}, // second priority
+    {regexp.MustCompile(`(?i)postgresql`), "PostgreSQL"},         // fallback
 }
 ```
 
@@ -615,7 +621,7 @@ gs_om -t status --detail  # fallback
 | `host not in known_hosts` | First connection to this node | Use `--insecure-hostkey` or run `ssh-keyscan -H <host> >> ~/.ssh/known_hosts` |
 | `Database connection failed` | Wrong DB params | Check `--db-port`, `--db-user`, `--db-password`, `--db-name` |
 | `Permission denied` | Insufficient SSH user privileges | Verify SSH user has read access to DB data/log directories |
-| Output directory error | Path does not exist or is not writable | Specify a valid writable directory with `--output` |
+| Output directory error | Path exists but is not a directory or not writable | Ensure `--output` path points to a writable directory (non-existent paths are auto-created) |
 
 ### 13.2 Debug Mode
 
@@ -672,34 +678,42 @@ The tool now uses stdin to pass file paths to remote SSH commands instead of emb
 
 ---
 
-## 16. Recent Improvements
+## 15. Recent Improvements
 
-### 16.1 Security Hardening (Latest)
+### 15.1 Security Hardening (Latest)
 
 - **SSH Command Injection Prevention**: File paths are now passed via stdin to remote SSH commands instead of being interpolated into command strings
 - **Input Validation**: Enhanced validation of user inputs to reject shell-dangerous characters
 - **Secure Random Generation**: Replaced `math/rand` with `crypto/rand` for security-sensitive random number generation
 
-### 16.2 Design Improvements
+### 15.2 Design Improvements
 
 - **Unified DSN Building**: All database adapters now use `cfg.BuildDSN(host, port, timeout)` for consistent connection string construction
 - **Improved Concurrency**: Better context handling in errgroup with proper cancellation propagation
 - **Enhanced Error Messages**: More descriptive error messages with context for easier troubleshooting
+- **Output Directory Auto-creation**: The output directory is automatically created if it does not exist
+- **Unique File Path**: Output archives use unique file paths to avoid overwriting existing files
 
-### 16.3 Database Detection
+### 15.3 Database Detection
 
 - **Regex-based Priority Matching**: Database type detection now uses regex patterns with priority ordering to correctly identify databases even when version strings contain multiple database names
 
-### 16.4 Timezone Support
+### 15.4 Timezone Support
 
 - **Location Parameter**: TimeFilter now accepts a Location timezone parameter
 - **Accurate Filtering**: Time-based log filtering now correctly handles timezone conversions for cross-region deployments
 
+### 15.5 Reliability
+
+- **SSH Command Timeout**: Commands executed over SSH have a 5-minute timeout to prevent indefinite hangs
+- **Keepalive Detection**: SSH connection pool uses `keepalive@openssh.com` with fallback to verify connection health
+- **Partial Failure Preservation**: If packaging fails, the temporary work directory is retained for manual data retrieval
+
 ---
 
-## 17. Development Guide
+## 16. Development Guide
 
-### 17.1 Project Structure
+### 16.1 Project Structure
 
 ```
 dbpacklogs/
@@ -737,18 +751,16 @@ dbpacklogs/
         └── format.go            # Time parsing, byte/duration formatting
 ```
 
-### 17.2 Build Commands
+### 16.2 Build Commands
 
 ```bash
 make build           # Build for current platform → ./bin/dbpacklogs
-make build-linux-amd64
-make build-linux-arm64
 make test            # Run tests
 make lint            # Run linter
 make clean           # Remove build artifacts
 ```
 
-### 17.3 Test Commands
+### 16.3 Test Commands
 
 ```bash
 make test                    # Run all tests
@@ -760,7 +772,7 @@ go test -run TestFormatBytes ./pkg/utils/  # Run specific test function
 
 > **Note**: Some tests may require appropriate SSH connections or database instances to run properly. If tests timeout, it may be due to external dependencies. For pure unit tests without external dependencies, use the specific package path (e.g., `go test ./pkg/utils/`).
 
-### 17.4 Adding a New Database
+### 16.4 Adding a New Database
 
 1. Define the adapter in `detector/adapter.go` (implement `DBAdapter`).
 2. Create `detector/<dbname>.go` with `Detect()`, `DiscoverNodes()`, `GetLogPaths()`.

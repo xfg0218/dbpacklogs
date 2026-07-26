@@ -18,7 +18,8 @@
 12. [配置示例](#12-配置示例)
 13. [故障排查](#13-故障排查)
 14. [常见问题](#14-常见问题)
-15. [开发指南](#15-开发指南)
+15. [近期改进](#15-近期改进)
+16. [开发指南](#16-开发指南)
 
 ---
 
@@ -80,7 +81,7 @@ DBpackLogs 是一款企业级的数据库日志收集打包工具，通过 SSH �
 | 要求 | 说明 |
 |------|------|
 | **操作系统** | Linux（CentOS、RHEL、Ubuntu、Debian 等） |
-| **Go 版本** | Go 1.21 或更高版本（源码构建时需要） |
+| **Go 版本** | Go 1.24 或更高版本（源码构建时需要） |
 | **SSH 访问** | 能够 SSH 访问所有目标数据库节点 |
 | **磁盘空间** | 根据日志量预留足够空间 |
 
@@ -146,10 +147,10 @@ make build
 ### 5.2 交叉编译
 
 ```bash
-make build-linux-amd64   # Linux AMD64
-make build-linux-arm64   # Linux ARM64
-make build-darwin-amd64  # macOS AMD64
-make build-darwin-arm64  # macOS ARM64
+GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o bin/dbpacklogs-linux-amd64 ./cmd     # Linux AMD64
+GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o bin/dbpacklogs-linux-arm64 ./cmd     # Linux ARM64
+GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o bin/dbpacklogs-darwin-amd64 ./cmd   # macOS AMD64
+GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o bin/dbpacklogs-darwin-arm64 ./cmd   # macOS ARM64
 ```
 
 ### 5.3 预编译版本
@@ -239,7 +240,7 @@ make build-darwin-arm64  # macOS ARM64
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--output` | `.` | 输出目录 |
+| `--output` | `.` | 输出目录（不存在时自动创建） |
 | `--pack-type` | `zip` | 打包类型：`zip` 或 `tar` |
 | `--verbose` | `false` | 启用调试模式（显示 DEBUG 日志） |
 
@@ -371,6 +372,7 @@ make build-darwin-arm64  # macOS ARM64
     │   │       ├── dmesg.txt
     │   │       ├── journalctl.txt
     │   │       ├── raid.txt
+    │   │       ├── hosts.txt
     │   │       └── os_info.txt
     │   └── 10.0.0.11/
     │       └── ...
@@ -462,12 +464,16 @@ make build-darwin-arm64  # macOS ARM64
 
 ### 10.2 数据库类型识别
 
+使用正则表达式按优先级匹配，避免版本字符串中包含多个数据库名称时的误判（例如 Greenplum 也包含 "PostgreSQL"）：
+
 ```go
-switch {
-case strings.Contains(version, "greenplum"):  // → GreenplumAdapter
-case strings.Contains(version, "opengauss"),
-     strings.Contains(version, "gaussdb"):    // → OpenGaussAdapter
-case strings.Contains(version, "postgresql"): // → PostgresAdapter
+var versionPatterns = []struct {
+    pattern *regexp.Regexp
+    dbType  string
+}{
+    {regexp.MustCompile(`(?i)greenplum`), "Greenplum"},           // 最高优先级
+    {regexp.MustCompile(`(?i)(opengauss|gaussdb)`), "openGauss"}, // 次优先级
+    {regexp.MustCompile(`(?i)postgresql`), "PostgreSQL"},         // 兜底匹配
 }
 ```
 
@@ -615,7 +621,7 @@ gs_om -t status --detail   # 回退
 | `host not in known_hosts` | 首次连接该主机 | 使用 `--insecure-hostkey` 或执行 `ssh-keyscan -H <host> >> ~/.ssh/known_hosts` |
 | `Database connection failed` | 数据库参数错误 | 检查 `--db-port`、`--db-user`、`--db-password`、`--db-name` |
 | `Permission denied` | SSH 用户权限不足 | 确认 SSH 用户对 DB 数据/日志目录有读权限 |
-| 输出目录错误 | 路径不存在或不可写 | 使用 `--output` 指定合法的可写目录 |
+| 输出目录错误 | 路径存在但不是目录或不可写 | 确保 `--output` 路径指向可写目录（不存在的路径会自动创建） |
 
 ### 13.2 调试模式
 
@@ -672,34 +678,42 @@ TimeFilter 现在支持 Location 时区参数。所有时间解析和过滤操�
 
 ---
 
-## 16. 近期改进
+## 15. 近期改进
 
-### 16.1 安全加固（最新）
+### 15.1 安全加固（最新）
 
 - **SSH 命令注入防护**：文件路径现在通过 stdin 传递给远程 SSH 命令，而不是插值到命令字符串中
 - **输入验证**：增强用户输入验证，拒绝包含 shell 危险字符的输入
 - **安全随机数生成**：使用 `crypto/rand` 替代 `math/rand` 用于安全敏感的随机数生成
 
-### 16.2 设计改进
+### 15.2 设计改进
 
 - **统一 DSN 构建**：所有数据库适配器现在使用 `cfg.BuildDSN(host, port, timeout)` 构建一致的连接字符串
 - **改进的并发控制**：更好的 errgroup 上下文处理，正确的取消传播
 - **增强的错误消息**：更具描述性的错误消息，便于故障排查
+- **输出目录自动创建**：输出目录不存在时自动创建
+- **唯一文件路径**：输出归档使用唯一文件路径，避免覆盖已有文件
 
-### 16.3 数据库检测
+### 15.3 数据库检测
 
 - **基于正则的优先级匹配**：数据库类型检测现在使用带优先级排序的正则表达式模式，即使版本字符串包含多个数据库名称也能正确识别
 
-### 16.4 时区支持
+### 15.4 时区支持
 
 - **Location 参数**：TimeFilter 现在接受 Location 时区参数
 - **精确过滤**：基于时间的日志过滤现在正确处理时区转换，适用于跨地区部署
 
+### 15.5 可靠性提升
+
+- **SSH 命令超时**：SSH 命令执行设置 5 分钟超时，防止无限挂起
+- **Keepalive 检测**：SSH 连接池使用 `keepalive@openssh.com` 并带有回退机制来验证连接健康状态
+- **部分失败保留**：打包失败时保留临时工作目录，便于手动检索已收集的数据
+
 ---
 
-## 17. 开发指南
+## 16. 开发指南
 
-### 17.1 项目结构
+### 16.1 项目结构
 
 ```
 dbpacklogs/
@@ -737,18 +751,16 @@ dbpacklogs/
         └── format.go            # 时间解析、字节/耗时格式化
 ```
 
-### 17.2 构建命令
+### 16.2 构建命令
 
 ```bash
 make build           # 构建当前平台 → ./bin/dbpacklogs
-make build-linux-amd64
-make build-linux-arm64
 make test            # 运行测试
 make lint            # 运行代码检查
 make clean           # 清理构建产物
 ```
 
-### 17.3 测试命令
+### 16.3 测试命令
 
 ```bash
 make test                    # 运行所有测试
@@ -760,7 +772,7 @@ go test -run TestFormatBytes ./pkg/utils/  # 运行特定测试函数
 
 > **注意**: 某些测试可能需要适当的 SSH 连接或数据库实例才能正常运行。如果测试超时，可能是由于外部依赖。对于不依赖外部资源的纯单元测试，使用特定包路径（例如 `go test ./pkg/utils/`）。
 
-### 17.4 添加新数据库支持
+### 16.4 添加新数据库支持
 
 1. 在 `detector/adapter.go` 中添加新的 `DBType` 常量。
 2. 新建 `detector/<dbname>.go`，实现 `Detect()`、`DiscoverNodes()`、`GetLogPaths()` 三个接口方法。
